@@ -17,20 +17,20 @@ import java.time.LocalDate;
 @Getter
 @Setter
 @Entity
-public class KhachHang {
+public class Customer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_khach_hang", nullable = false)
+    @Column(name = "customer_id", nullable = false)
     private Integer id;
 
     @Size(max = 150)
     @Nationalized
-    @Column(name = "ho_ten", length = 150)
-    private String hoTen;
+    @Column(name = "full_name", length = 150)
+    private String fullName;
 
     @Size(max = 10)
-    @Column(name = "so_dien_thoai", length = 10)
-    private String soDienThoai;
+    @Column(name = "phone_number", length = 10)
+    private String phoneNumber;
 
     @Size(max = 200)
     @Column(name = "email", length = 200)
@@ -40,17 +40,17 @@ public class KhachHang {
     @Column(name = "password", length = 150)
     private String password;
 
-    @Column(name = "ngay_sinh")
-    private LocalDate ngaySinh;
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
 
-    @Column(name = "diem_tich_luy")
-    private Integer diemTichLuy;
+    @Column(name = "loyalty_points")
+    private Integer loyaltyPoints;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
-    @Column(name = "trang_thai")
-    private Boolean trangThai;
+    @Column(name = "is_active")
+    private Boolean isActive;
 
 }

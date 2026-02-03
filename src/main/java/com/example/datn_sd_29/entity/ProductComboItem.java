@@ -15,23 +15,23 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-public class ChiTietCombo {
+public class ProductComboItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_chi_tiet_combo", nullable = false)
+    @Column(name = "product_combo_item_id", nullable = false)
     private Integer id;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_combo", nullable = false)
-    private com.example.datn_sd_29.entity.Combo idCombo;
+    @JoinColumn(name = "product_combo_id", nullable = false)
+    private ProductCombo productCombo;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_san_pham", nullable = false)
-    private com.example.datn_sd_29.entity.SanPham idSanPham;
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
 
-    @Column(name = "so_luong")
-    private Integer soLuong;
+    @Column(name = "quantity")
+    private Integer quantity;
 
 }

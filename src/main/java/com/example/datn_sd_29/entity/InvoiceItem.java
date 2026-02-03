@@ -18,36 +18,36 @@ import java.math.BigDecimal;
 @Getter
 @Setter
 @Entity
-public class HoaDonChiTiet {
+public class InvoiceItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_hoa_don_chi_tiet", nullable = false)
+    @Column(name = "invoice_item_id", nullable = false)
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_hoa_don")
-    private HoaDon idHoaDon;
+    @JoinColumn(name = "invoice_id")
+    private Invoice invoice;
 
     @Size(max = 20)
-    @Column(name = "loai_mat_hang", length = 20)
-    private String loaiMatHang;
+    @Column(name = "item_type", length = 20)
+    private String itemType;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_san_pham")
-    private com.example.datn_sd_29.entity.SanPham idSanPham;
+    @JoinColumn(name = "product_id")
+    private com.example.datn_sd_29.entity.Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_combo")
-    private Combo idCombo;
+    @JoinColumn(name = "product_combo_id")
+    private com.example.datn_sd_29.entity.ProductCombo productCombo;
 
-    @Column(name = "so_luong")
-    private Integer soLuong;
+    @Column(name = "quantity")
+    private Integer quantity;
 
-    @Column(name = "don_gia", precision = 18, scale = 2)
-    private BigDecimal donGia;
+    @Column(name = "unit_price", precision = 18, scale = 2)
+    private BigDecimal unitPrice;
 
-    @ColumnDefault("[so_luong]*[don_gia]")
-    @Column(name = "thanh_tien", precision = 29, scale = 2)
-    private BigDecimal thanhTien;
+    @ColumnDefault("[quantity]*[unit_price]")
+    @Column(name = "line_total", precision = 29, scale = 2)
+    private BigDecimal lineTotal;
 
 }
