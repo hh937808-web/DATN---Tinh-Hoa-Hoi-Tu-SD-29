@@ -15,30 +15,30 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-public class HoaDonVoucher {
+public class InvoiceVoucher {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_hoa_don_voucher", nullable = false)
+    @Column(name = "invoice_voucher_id", nullable = false)
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_hoa_don")
-    private HoaDon idHoaDon;
+    @JoinColumn(name = "invoice_id")
+    private Invoice invoice;
 
     @Size(max = 20)
-    @Column(name = "loai_voucher", length = 20)
-    private String loaiVoucher;
+    @Column(name = "voucher_scope", length = 20)
+    private String voucherScope;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_voucher_khach_hang")
-    private com.example.datn_sd_29.entity.VoucherKhachHang idVoucherKhachHang;
+    @JoinColumn(name = "customer_voucher_id")
+    private CustomerVoucher customerVoucher;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_voucher_san_pham")
-    private com.example.datn_sd_29.entity.VoucherSanPham idVoucherSanPham;
+    @JoinColumn(name = "product_voucher_id")
+    private com.example.datn_sd_29.entity.ProductVoucher productVoucher;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_voucher_combo")
-    private com.example.datn_sd_29.entity.VoucherCombo idVoucherCombo;
+    @JoinColumn(name = "product_combo_voucher_id")
+    private com.example.datn_sd_29.entity.ProductComboVoucher productComboVoucher;
 
 }

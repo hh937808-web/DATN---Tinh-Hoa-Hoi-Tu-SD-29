@@ -16,16 +16,16 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-public class NhanVien {
+public class Employee {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_nhan_vien", nullable = false)
+    @Column(name = "employee_id", nullable = false)
     private Integer id;
 
     @Size(max = 150)
     @Nationalized
-    @Column(name = "ho_ten", length = 150)
-    private String hoTen;
+    @Column(name = "full_name", length = 150)
+    private String fullName;
 
     @Size(max = 100)
     @Column(name = "username", length = 100)
@@ -37,22 +37,22 @@ public class NhanVien {
 
     @Size(max = 50)
     @Nationalized
-    @Column(name = "vai_tro", length = 50)
-    private String vaiTro;
+    @Column(name = "role", length = 50)
+    private String role;
 
     @Size(max = 10)
-    @Column(name = "so_dien_thoai", length = 10)
-    private String soDienThoai;
+    @Column(name = "phone_number", length = 10)
+    private String phoneNumber;
 
     @Size(max = 200)
     @Column(name = "email", length = 200)
     private String email;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
-    @Column(name = "trang_thai")
-    private Boolean trangThai;
+    @Column(name = "is_active")
+    private Boolean isActive;
 
 }

@@ -16,27 +16,27 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-public class Ban {
+public class DiningTable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_ban", nullable = false)
+    @Column(name = "dining_table_id", nullable = false)
     private Integer id;
 
     @Size(max = 20)
     @Nationalized
-    @Column(name = "ten_ban", length = 20)
-    private String tenBan;
+    @Column(name = "table_name", length = 20)
+    private String tableName;
 
-    @Column(name = "suc_chua")
-    private Integer sucChua;
+    @Column(name = "seating_capacity")
+    private Integer seatingCapacity;
 
     @Size(max = 50)
     @Nationalized
-    @Column(name = "trang_thai", length = 50)
-    private String trangThai;
+    @Column(name = "table_status", length = 50)
+    private String tableStatus;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
 }

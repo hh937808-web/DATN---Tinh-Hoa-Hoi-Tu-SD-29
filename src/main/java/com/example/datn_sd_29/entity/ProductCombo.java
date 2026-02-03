@@ -17,34 +17,33 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-public class Combo {
+public class ProductCombo {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_combo", nullable = false)
+    @Column(name = "product_combo_id", nullable = false)
     private Integer id;
 
     @Size(max = 100)
     @Nationalized
-    @Column(name = "ten_combo", length = 100)
-    private String tenCombo;
+    @Column(name = "combo_name", length = 100)
+    private String comboName;
 
     @Size(max = 300)
     @Nationalized
-    @Column(name = "mo_ta", length = 300)
-    private String moTa;
+    @Column(name = "description", length = 300)
+    private String description;
 
-    @Column(name = "gia_combo", precision = 18, scale = 2)
-    private BigDecimal giaCombo;
+    @Column(name = "combo_price", precision = 18, scale = 2)
+    private BigDecimal comboPrice;
 
-    @Size(max = 50)
-    @Column(name = "trang_thai", length = 50)
-    private String trangThai;
+    @Column(name = "is_active")
+    private Boolean isActive;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
-    @Column(name = "ngay_cap_nhat")
-    private Instant ngayCapNhat;
+    @Column(name = "updated_at")
+    private Instant updatedAt;
 
 }

@@ -19,36 +19,36 @@ import java.time.LocalDate;
 @Getter
 @Setter
 @Entity
-public class VoucherKhachHang {
+public class CustomerVoucher {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_voucher_khach_hang", nullable = false)
+    @Column(name = "customer_voucher_id", nullable = false)
     private Integer id;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_voucher_ca_nhan", nullable = false)
-    private VoucherCaNhan idVoucherCaNhan;
+    @JoinColumn(name = "personal_voucher_id", nullable = false)
+    private com.example.datn_sd_29.entity.PersonalVoucher personalVoucher;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_khach_hang", nullable = false)
-    private KhachHang idKhachHang;
+    @JoinColumn(name = "customer_id", nullable = false)
+    private Customer customer;
 
-    @Column(name = "ngay_cap")
-    private LocalDate ngayCap;
+    @Column(name = "issued_at")
+    private LocalDate issuedAt;
 
-    @Column(name = "ngay_het_han")
-    private LocalDate ngayHetHan;
+    @Column(name = "expires_at")
+    private LocalDate expiresAt;
 
-    @Column(name = "so_luong_con_lai")
-    private Integer soLuongConLai;
+    @Column(name = "remaining_quantity")
+    private Integer remainingQuantity;
 
-    @Column(name = "trang_thai")
-    private Boolean trangThai;
+    @Column(name = "is_active")
+    private Boolean isActive;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
 }

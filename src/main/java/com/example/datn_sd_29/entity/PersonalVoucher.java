@@ -13,26 +13,26 @@ import org.hibernate.annotations.Nationalized;
 @Getter
 @Setter
 @Entity
-public class VoucherCaNhan {
+public class PersonalVoucher {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_voucher_ca_nhan", nullable = false)
+    @Column(name = "personal_voucher_id", nullable = false)
     private Integer id;
 
     @Size(max = 8)
-    @Column(name = "ma_voucher", length = 8)
-    private String maVoucher;
+    @Column(name = "voucher_code", length = 8)
+    private String voucherCode;
 
     @Size(max = 50)
-    @Column(name = "ten_voucher", length = 50)
-    private String tenVoucher;
+    @Column(name = "voucher_name", length = 50)
+    private String voucherName;
 
-    @Column(name = "gia_tri_giam")
-    private Integer giaTriGiam;
+    @Column(name = "discount_percent")
+    private Integer discountPercent;
 
     @Size(max = 50)
     @Nationalized
-    @Column(name = "loai_voucher", length = 50)
-    private String loaiVoucher;
+    @Column(name = "voucher_type", length = 50)
+    private String voucherType;
 
 }

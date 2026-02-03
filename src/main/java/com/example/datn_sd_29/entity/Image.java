@@ -15,23 +15,23 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-public class Anh {
+public class Image {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_anh", nullable = false)
+    @Column(name = "image_id", nullable = false)
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_san_pham")
-    private com.example.datn_sd_29.entity.SanPham idSanPham;
+    @JoinColumn(name = "product_id")
+    private com.example.datn_sd_29.entity.Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_combo")
-    private com.example.datn_sd_29.entity.Combo idCombo;
+    @JoinColumn(name = "product_combo_id")
+    private com.example.datn_sd_29.entity.ProductCombo productCombo;
 
     @Lob
-    @Column(name = "url")
-    private String url;
+    @Column(name = "image_url")
+    private String imageUrl;
 
     @Column(name = "is_primary")
     private Boolean isPrimary;

@@ -15,31 +15,31 @@ import java.math.BigDecimal;
 @Getter
 @Setter
 @Entity
-public class SanPham {
+public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_san_pham", nullable = false)
+    @Column(name = "product_id", nullable = false)
     private Integer id;
 
     @Size(max = 100)
     @Nationalized
-    @Column(name = "ten_san_pham", length = 100)
-    private String tenSanPham;
+    @Column(name = "product_name", length = 100)
+    private String productName;
 
     @Size(max = 50)
-    @Column(name = "loai_san_pham", length = 50)
-    private String loaiSanPham;
+    @Column(name = "product_category", length = 50)
+    private String productCategory;
 
-    @Column(name = "gia_san_pham", precision = 18, scale = 2)
-    private BigDecimal giaSanPham;
+    @Column(name = "unit_price", precision = 18, scale = 2)
+    private BigDecimal unitPrice;
 
     @Size(max = 300)
     @Nationalized
-    @Column(name = "mo_ta", length = 300)
-    private String moTa;
+    @Column(name = "description", length = 300)
+    private String description;
 
     @Size(max = 50)
-    @Column(name = "trang_thai", length = 50)
-    private String trangThai;
+    @Column(name = "availability_status", length = 50)
+    private String availabilityStatus;
 
 }

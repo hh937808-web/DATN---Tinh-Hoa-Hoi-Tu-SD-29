@@ -19,27 +19,27 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-public class HoaDonBan {
+public class InvoiceDiningTable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_hoadon_ban", nullable = false)
+    @Column(name = "invoice_dining_table_id", nullable = false)
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_hoa_don")
-    private HoaDon idHoaDon;
+    @JoinColumn(name = "invoice_id")
+    private Invoice invoice;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_ban")
-    private Ban idBan;
+    @JoinColumn(name = "dining_table_id")
+    private DiningTable diningTable;
 
     @Size(max = 50)
     @Nationalized
-    @Column(name = "ghi_chu", length = 50)
-    private String ghiChu;
+    @Column(name = "note", length = 50)
+    private String note;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
 }

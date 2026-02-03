@@ -20,42 +20,42 @@ import java.time.LocalDate;
 @Getter
 @Setter
 @Entity
-public class VoucherCombo {
+public class ProductVoucher {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_voucher_combo", nullable = false)
+    @Column(name = "product_voucher_id", nullable = false)
     private Integer id;
 
     @Size(max = 8)
-    @Column(name = "ma_voucher", length = 8)
-    private String maVoucher;
+    @Column(name = "voucher_code", length = 8)
+    private String voucherCode;
 
     @Size(max = 50)
-    @Column(name = "ten_voucher", length = 50)
-    private String tenVoucher;
+    @Column(name = "voucher_name", length = 50)
+    private String voucherName;
 
-    @Column(name = "gia_tri_giam")
-    private Integer giaTriGiam;
+    @Column(name = "discount_percent")
+    private Integer discountPercent;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_combo", nullable = false)
-    private Combo idCombo;
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
 
-    @Column(name = "so_luong_voucher")
-    private Integer soLuongVoucher;
+    @Column(name = "remaining_quantity")
+    private Integer remainingQuantity;
 
-    @Column(name = "thoi_gian_bat_dau")
-    private LocalDate thoiGianBatDau;
+    @Column(name = "valid_from")
+    private LocalDate validFrom;
 
-    @Column(name = "thoi_gian_ket_thuc")
-    private LocalDate thoiGianKetThuc;
+    @Column(name = "valid_to")
+    private LocalDate validTo;
 
-    @Column(name = "trang_thai")
-    private Boolean trangThai;
+    @Column(name = "is_active")
+    private Boolean isActive;
 
     @ColumnDefault("getdate()")
-    @Column(name = "ngay_tao")
-    private Instant ngayTao;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
 }
