@@ -33,7 +33,7 @@ public class Customer {
     private String phoneNumber;
 
     @Size(max = 200)
-    @Column(name = "email", length = 200)
+    @Column(name = "email", length = 200, unique = true)
     private String email;
 
     @Size(max = 150)
