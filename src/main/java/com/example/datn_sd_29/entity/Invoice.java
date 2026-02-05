@@ -15,6 +15,8 @@ import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -50,7 +52,7 @@ public class Invoice {
     private String invoiceStatus;
 
     @Column(name = "reserved_at")
-    private Instant reservedAt;
+    private LocalDateTime reservedAt;
 
     @Column(name = "checked_in_at")
     private Instant checkedInAt;
@@ -62,7 +64,7 @@ public class Invoice {
     private BigDecimal discountAmount;
 
     @ColumnDefault("isnull([subtotal_amount], 0)-isnull([discount_amount], 0)")
-    @Column(name = "final_amount", precision = 19, scale = 2)
+    @Column(name = "final_amount",insertable = false,updatable = false, precision = 19, scale = 2)
     private BigDecimal finalAmount;
 
     @Size(max = 20)
