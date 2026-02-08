@@ -3,15 +3,15 @@ package com.example.datn_sd_29.exception;
 import com.example.datn_sd_29.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tools.jackson.databind.exc.InvalidFormatException;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,6 +32,21 @@ public class GlobalExceptionHandler {
             errors.add(item);
         }
         ApiResponse<Object> response = ApiResponse.error("Validation Failed", errors);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        String message = "Dữ liệu không hợp lệ!";
+
+        Throwable cause = ex.getCause();
+        if (cause instanceof InvalidFormatException) {
+            InvalidFormatException ife = (InvalidFormatException) cause;
+            if (ife.getTargetType() != null && ife.getTargetType().isEnum()) {
+                message = String.format("Giá trị không hợp lệ!");
+            }
+        }
+        ApiResponse<Object> response = ApiResponse.error(message, null);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 }
