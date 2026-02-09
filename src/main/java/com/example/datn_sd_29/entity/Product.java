@@ -1,10 +1,8 @@
 package com.example.datn_sd_29.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import com.example.datn_sd_29.enums.ProductCategory;
+import com.example.datn_sd_29.enums.ProductStatus;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,9 +24,9 @@ public class Product {
     @Column(name = "product_name", length = 100)
     private String productName;
 
-    @Size(max = 50)
+    @Enumerated(EnumType.STRING)
     @Column(name = "product_category", length = 50)
-    private String productCategory;
+    private ProductCategory productCategory;
 
     @Column(name = "unit_price", precision = 18, scale = 2)
     private BigDecimal unitPrice;
@@ -38,8 +36,8 @@ public class Product {
     @Column(name = "description", length = 300)
     private String description;
 
-    @Size(max = 50)
+    @Enumerated(EnumType.STRING)
     @Column(name = "availability_status", length = 50)
-    private String availabilityStatus;
+    private ProductStatus availabilityStatus;
 
 }
