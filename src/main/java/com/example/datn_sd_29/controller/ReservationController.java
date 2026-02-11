@@ -1,7 +1,9 @@
 package com.example.datn_sd_29.controller;
 
+import com.example.datn_sd_29.dto.ApiResponse;
 import com.example.datn_sd_29.dto.ReservationRequest;
 import com.example.datn_sd_29.service.ReservationService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,9 +18,9 @@ public class ReservationController {
     private final ReservationService reservationService;
 
     @PostMapping
-    public ResponseEntity<?> reserve(@RequestBody ReservationRequest request) {
+    public ResponseEntity<ApiResponse<Void>> reserve(@Valid @RequestBody ReservationRequest request) {
         reservationService.reserveTable(request);
-        return ResponseEntity.ok("Đặt bàn thành công, vui lòng kiểm tra email");
+        return ResponseEntity.ok(ApiResponse.success("Đặt bàn thành công, vui lòng kiểm tra email", null));
     }
 
 }
