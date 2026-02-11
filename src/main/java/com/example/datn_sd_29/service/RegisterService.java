@@ -1,9 +1,12 @@
 package com.example.datn_sd_29.service;
 
+import com.example.datn_sd_29.dto.LoginRequest;
+import com.example.datn_sd_29.dto.LoginResponse;
 import com.example.datn_sd_29.dto.RegisterRequest;
 import com.example.datn_sd_29.dto.RegisterResponse;
 import com.example.datn_sd_29.entity.Customer;
 import com.example.datn_sd_29.repository.CustomerRepository;
+import com.example.datn_sd_29.security.JwtService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,11 +19,15 @@ public class RegisterService {
 
     private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     public RegisterService(CustomerRepository customerRepository,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder,
+                           JwtService jwtService
+    ) {
         this.customerRepository = customerRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
     }
 
     public RegisterResponse register(RegisterRequest request) {
@@ -59,5 +66,24 @@ public class RegisterService {
             }
             throw new IllegalArgumentException("Data violates constraint!");
         }
+    }
+
+    public LoginResponse login(LoginRequest request) {
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        Customer customer = customerRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException("Email hoặc mật khẩu không đúng"));
+
+        if (Boolean.FALSE.equals(customer.getIsActive())) {
+            throw new IllegalArgumentException("Tài khoản đã bị khóa");
+        }
+
+        String encodedPassword = customer.getPassword();
+        if (encodedPassword == null || !passwordEncoder.matches(request.getPassword(), encodedPassword)) {
+            throw new IllegalArgumentException("Email hoặc mật khẩu không đúng");
+        }
+
+        String token = jwtService.generateToken(customer.getEmail());
+        return new LoginResponse(token, customer.getEmail());
     }
 }
