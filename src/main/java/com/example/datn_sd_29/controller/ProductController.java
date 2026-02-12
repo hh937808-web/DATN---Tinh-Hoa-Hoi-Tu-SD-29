@@ -38,10 +38,18 @@ public class ProductController {
         ProductResponse response = productService.updateProduct(id, request);
         return ResponseEntity.ok(ApiResponse.success("Update product successfully!", response));
     }
-
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<Void>> deleteProduct(
+            @PathVariable Integer id
+    ) {
         productService.deleteProduct(id);
-        return ResponseEntity.ok(ApiResponse.success("Delete product successfully!", null));
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Product discontinued successfully!",
+                        null
+                )
+        );
     }
+
 }
