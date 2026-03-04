@@ -35,4 +35,16 @@ public class EmailService {
 
         mailSender.send(mail);
     }
+
+    public void sendOtpEmail(String to, String otpCode, int expiresInMinutes) {
+        SimpleMailMessage mail = new SimpleMailMessage();
+        mail.setTo(to);
+        mail.setSubject("Mã OTP xác thực tài khoản");
+        mail.setText(
+                "Mã OTP của bạn là: " + otpCode + "\n" +
+                        "Mã hiệu lực trong " + expiresInMinutes + " phút. \n" +
+                        "Lưu ý: đừng chia sẻ mã OTP."
+        );
+        mailSender.send(mail);
+    }
 }
