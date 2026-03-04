@@ -26,7 +26,7 @@ public class LoginService {
             throw new IllegalArgumentException("Tài khoản này đã bị khóa");
         }
 
-        String encodePassword = passwordEncoder.encode(request.getPassword());
+        String encodePassword = customer.getPassword();
         if (encodePassword == null || !passwordEncoder.matches(request.getPassword(), encodePassword)) {
             throw new IllegalArgumentException("Email hoặc mật khẩu không đúng");
 
