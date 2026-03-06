@@ -29,7 +29,7 @@ public class OtpService {
 
     private static final String PURPOSE_REGISTER = "REGISTER";
     private static final int OTP_TTL_MINUTES = 5;
-    private static final int OTP_MAX_ATTEMPTS = 3;
+    private static final int OTP_MAX_ATTEMPTS = 15;
     private static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final int PENDING_TTL_MINUTES = 30;
 
@@ -38,6 +38,8 @@ public class OtpService {
     private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+
+    private final OtpRateLimitService otpRateLimitService;
 
     @Transactional
     public SendOtpResponse startRegister(RegisterRequest request, HttpServletRequest httpRequest) {
@@ -105,11 +107,14 @@ public class OtpService {
                 challenge.getExpiresAt(),
                 OTP_RESEND_COOLDOWN_SECONDS
         );
+
     }
 
     @Transactional
     public RegisterResponse verifyRegisterOtp(VerifyOtpRequest request, HttpServletRequest httpRequest) {
         String normalizedEmail = normalizedEmail(request.getEmail());
+        otpRateLimitService.assertNotLocked(normalizedEmail);
+
         Instant now = Instant.now();
 
         OtpChallenge challenge = otpChallengeRepository
@@ -123,25 +128,14 @@ public class OtpService {
             throw new IllegalArgumentException("OTP expired. Please request a new OTP.");
         }
 
-        int attemptCount = safeInt(challenge.getAttemptCount());
-        int maxAttempts = safeInt(challenge.getMaxAttempts());
-        if (maxAttempts <= 0) {
-            maxAttempts = OTP_MAX_ATTEMPTS;
-        }
-
-        if (attemptCount >= maxAttempts) {
-            throw new IllegalArgumentException("OTP attempt limit exceeded.");
-        }
-
         boolean matched = passwordEncoder.matches(request.getOtpCode(), challenge.getOtpHash());
         if (!matched) {
+            int attemptCount = safeInt(challenge.getAttemptCount());
             attemptCount += 1;
             challenge.setAttemptCount(attemptCount);
             challenge.setUpdatedAt(now);
-            if (attemptCount >= maxAttempts) {
-                challenge.setInvalidatedAt(now);
-            }
             otpChallengeRepository.save(challenge);
+            otpRateLimitService.onVerifyFailed(normalizedEmail);
             throw new IllegalArgumentException("Invalid OTP code.");
         }
 
@@ -185,6 +179,7 @@ public class OtpService {
         pending.setUpdatedAt(now);
         pendingRegisterRepository.save(pending);
 
+        otpRateLimitService.onVerifySuccess(normalizedEmail);
         return new RegisterResponse(saved.getId(), saved.getEmail());
     }
 
@@ -208,6 +203,9 @@ public class OtpService {
     }
 
     private OtpChallenge issueRegisterOtp(String normalizedEmail, HttpServletRequest httpRequest, Instant now) {
+        otpRateLimitService.assertNotLocked(normalizedEmail);
+        otpRateLimitService.assertCanSendOtp(normalizedEmail);
+
         OtpChallenge existing = otpChallengeRepository
                 .findLatestActive(normalizedEmail, PURPOSE_REGISTER)
                 .orElse(null);
@@ -244,6 +242,7 @@ public class OtpService {
 
         OtpChallenge saved = otpChallengeRepository.save(challenge);
         emailService.sendOtpEmail(normalizedEmail, otpCode, OTP_TTL_MINUTES);
+        otpRateLimitService.markOtpSend(normalizedEmail);
 
         return saved;
     }
