@@ -52,4 +52,6 @@ public class InvoiceItem {
     @Column(name = "line_total", precision = 29, scale = 2)
     private BigDecimal lineTotal;
 
+    @Column(name = "status")
+    private InvoiceItemStatus status;
 }

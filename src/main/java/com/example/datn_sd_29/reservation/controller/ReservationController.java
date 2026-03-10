@@ -1,4 +1,4 @@
-﻿package com.example.datn_sd_29.reservation.controller;
+package com.example.datn_sd_29.reservation.controller;
 
 import com.example.datn_sd_29.common.dto.ApiResponse;
 import com.example.datn_sd_29.reservation.dto.AvailableTableResponse;
@@ -40,7 +40,7 @@ public class ReservationController {
     @PostMapping
     public ResponseEntity<ApiResponse<ReservationResponse>> reserve(@Valid @RequestBody ReservationRequest request) {
         ReservationResponse response = reservationService.reserveTable(request);
-        return ResponseEntity.ok(ApiResponse.success("Đặt bàn thành công", response));
+        return ResponseEntity.ok(ApiResponse.success("Reservation Success", response));
     }
 
     @PostMapping("/{reservationCode}/send-email")
@@ -48,7 +48,7 @@ public class ReservationController {
             @PathVariable String reservationCode
     ) {
         reservationService.sendReservationDetailsEmail(reservationCode);
-        return ResponseEntity.ok(ApiResponse.success("Đã gửi email thành công", null));
+        return ResponseEntity.ok(ApiResponse.success("Send email success", null));
     }
 
 }
