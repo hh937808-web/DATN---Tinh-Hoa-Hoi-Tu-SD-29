@@ -38,6 +38,9 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/images/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/product-combo-vouchers/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/product-vouchers/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
