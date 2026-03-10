@@ -29,7 +29,7 @@ public class OtpService {
 
     private static final String PURPOSE_REGISTER = "REGISTER";
     private static final int OTP_TTL_MINUTES = 5;
-    private static final int OTP_MAX_ATTEMPTS = 3;
+    private static final int OTP_MAX_ATTEMPTS = 15;
     private static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final int PENDING_TTL_MINUTES = 30;
 

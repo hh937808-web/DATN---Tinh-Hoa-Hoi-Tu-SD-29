@@ -66,6 +66,10 @@ public class Invoice {
     @Column(name = "reservation_note", length = 500)
     private String reservationNote;
 
+    @Size(max = 1000)
+    @Column(name = "food_note", length = 1000)
+    private String foodNote;
+
     @Column(name = "checked_in_at")
     private Instant checkedInAt;
 
