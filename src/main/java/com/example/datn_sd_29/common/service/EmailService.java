@@ -6,8 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +35,47 @@ public class EmailService {
                         "Thời gian: " + timeText
         );
 
+        mailSender.send(mail);
+    }
+
+    public void sendOtpEmail(String to, String otpCode, int expiresInMinutes) {
+        SimpleMailMessage mail = new SimpleMailMessage();
+        mail.setTo(to);
+        mail.setSubject("Mã OTP xác thực tài khoản");
+        mail.setText(
+                "Mã OTP của bạn là: " + otpCode + "\n" +
+                        "Mã hiệu lực trong " + expiresInMinutes + " phút. \n" +
+                        "Lưu ý: đừng chia sẻ mã OTP."
+        );
+        mailSender.send(mail);
+    }
+
+    public void sendReservationDetailsEmail(
+            String to,
+            String reservationCode,
+            LocalDateTime reservedAt,
+            Integer guestCount,
+            String promotionType,
+            String note,
+            List<String> tableCodes
+    ) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(mailDateTimeFormat);
+        String timeText = reservedAt != null ? reservedAt.format(formatter) : "";
+        String tablesText = (tableCodes == null || tableCodes.isEmpty())
+                ? "N/A"
+                : String.join(", ", tableCodes);
+
+        SimpleMailMessage mail = new SimpleMailMessage();
+        mail.setTo(to);
+        mail.setSubject("Thông tin đặt bàn");
+        mail.setText(
+                "Mã bàn đặt: " + reservationCode + "\n" +
+                        "Thời gian đến: " + timeText + "\n" +
+                        "Số khách: " + guestCount + "\n" +
+                        "Ưu đãi: " + (promotionType == null ? "" : promotionType) + "\n" +
+                        "Ghi chú: " + (note == null ? "" : note) + "\n" +
+                        "Bàn: " + tablesText
+        );
         mailSender.send(mail);
     }
 }

@@ -29,7 +29,14 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register","/api/auth/login").permitAll()
+                        .requestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/login",
+                                "/api/auth/otp",
+                                "/api/auth/otp/send",
+                                "/api/auth/otp/verify",
+                                "/error"
+                        ).permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/products/**").permitAll()
                         .anyRequest().authenticated()
                 )
