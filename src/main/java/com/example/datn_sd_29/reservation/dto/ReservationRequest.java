@@ -24,6 +24,8 @@ public class ReservationRequest {
 
     private String note;
 
+    private String foodNote;
+
     @NotBlank(message = "Promotion type is required")
     private String promotionType;
 

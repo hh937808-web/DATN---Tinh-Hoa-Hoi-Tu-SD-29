@@ -113,6 +113,7 @@ public class ReservationService {
         invoice.setGuestCount(guestCount);
         invoice.setPromotionType(request.getPromotionType());
         invoice.setReservationNote(request.getNote());
+        invoice.setFoodNote(request.getFoodNote());
 
         invoice = invoiceRepository.save(invoice);
 
@@ -123,25 +124,29 @@ public class ReservationService {
             invoiceDiningTableRepository.save(idt);
         }
 
-        List<ReservationResponse.TableInfo> tables = selectedTables.stream()
-                .map(table -> new ReservationResponse.TableInfo(
-                        table.getId(),
-                        "MB-" + table.getId(),
-                        table.getTableName(),
-                        table.getSeatingCapacity()
-                ))
+        List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
+        return buildReservationResponse(invoice, customer, tables);
+    }
+
+    public ReservationResponse getReservationByCode(String reservationCode) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
+        }
+
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));
+
+        List<InvoiceDiningTable> links =
+                invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+
+        List<DiningTable> tables = links.stream()
+                .map(InvoiceDiningTable::getDiningTable)
                 .collect(Collectors.toList());
 
-        return new ReservationResponse(
-                invoice.getReservationCode(),
-                invoice.getReservedAt(),
-                invoice.getGuestCount(),
-                customer.getFullName(),
-                customer.getPhoneNumber(),
-                invoice.getPromotionType(),
-                invoice.getReservationNote(),
-                tables
-        );
+        Customer customer = invoice.getCustomer();
+        return buildReservationResponse(invoice, customer, toTableInfos(tables));
     }
 
     public void sendReservationDetailsEmail(String reservationCode) {
@@ -180,6 +185,38 @@ public class ReservationService {
                 invoice.getReservationNote(),
                 tableCodes
         );
+    }
+
+    private ReservationResponse buildReservationResponse(
+            Invoice invoice,
+            Customer customer,
+            List<ReservationResponse.TableInfo> tables
+    ) {
+        String fullName = customer != null ? customer.getFullName() : "";
+        String phoneNumber = customer != null ? customer.getPhoneNumber() : "";
+
+        return new ReservationResponse(
+                invoice.getReservationCode(),
+                invoice.getReservedAt(),
+                invoice.getGuestCount(),
+                fullName,
+                phoneNumber,
+                invoice.getPromotionType(),
+                invoice.getReservationNote(),
+                invoice.getFoodNote(),
+                tables
+        );
+    }
+
+    private List<ReservationResponse.TableInfo> toTableInfos(List<DiningTable> tables) {
+        return tables.stream()
+                .map(table -> new ReservationResponse.TableInfo(
+                        table.getId(),
+                        "MB-" + table.getId(),
+                        table.getTableName(),
+                        table.getSeatingCapacity()
+                ))
+                .collect(Collectors.toList());
     }
 
     private List<DiningTable> getAvailableDiningTables(LocalDateTime reservedAt, Integer guestCount) {

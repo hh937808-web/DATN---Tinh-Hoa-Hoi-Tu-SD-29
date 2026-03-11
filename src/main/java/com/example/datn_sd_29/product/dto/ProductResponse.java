@@ -7,14 +7,18 @@ import com.example.datn_sd_29.product.enums.ProductStatus;
 import java.math.BigDecimal;
 
 public class ProductResponse {
+
     private Integer id;
     private String productName;
-    private ProductCategory productCategory;  // Chỉ có enum
+    private ProductCategory productCategory;
     private BigDecimal unitPrice;
     private String description;
-    private ProductStatus availabilityStatus;  // Chỉ có enum
+    private ProductStatus availabilityStatus;
+    private Integer stockQuantity;
 
-    // Contructor từ entity (dễ maintain) (recommend cho các response khác)
+    public ProductResponse() {
+    }
+
     public ProductResponse(Product product) {
         this.id = product.getId();
         this.productName = product.getProductName();
@@ -22,6 +26,7 @@ public class ProductResponse {
         this.unitPrice = product.getUnitPrice();
         this.description = product.getDescription();
         this.availabilityStatus = product.getAvailabilityStatus();
+        this.stockQuantity = product.getStockQuantity();
     }
 
     public Integer getId() {
@@ -70,5 +75,13 @@ public class ProductResponse {
 
     public void setAvailabilityStatus(ProductStatus availabilityStatus) {
         this.availabilityStatus = availabilityStatus;
+    }
+
+    public Integer getStockQuantity() {
+        return stockQuantity;
+    }
+
+    public void setStockQuantity(Integer stockQuantity) {
+        this.stockQuantity = stockQuantity;
     }
 }

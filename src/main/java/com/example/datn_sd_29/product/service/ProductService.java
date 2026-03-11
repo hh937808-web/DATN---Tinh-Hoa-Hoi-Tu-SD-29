@@ -1,11 +1,13 @@
 package com.example.datn_sd_29.product.service;
 
 import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.enums.ProductCategory;
 import com.example.datn_sd_29.product.enums.ProductStatus;
 import com.example.datn_sd_29.product.dto.ProductRequest;
 import com.example.datn_sd_29.product.dto.ProductResponse;
 import com.example.datn_sd_29.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional
 public class ProductService {
+
     private final ProductRepository productRepository;
 
     @Transactional(readOnly = true)
@@ -26,6 +29,7 @@ public class ProductService {
     }
 
     public ProductResponse createProduct(ProductRequest request) {
+
         Product product = new Product();
         product.setProductName(request.getProductName());
         product.setProductCategory(request.getProductCategory());
@@ -34,15 +38,16 @@ public class ProductService {
         product.setAvailabilityStatus(request.getAvailabilityStatus());
 
         Product saved = productRepository.save(product);
-        return new ProductResponse(saved);
 
+        return new ProductResponse(saved);
     }
 
     public ProductResponse updateProduct(Integer id, ProductRequest request) {
+
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Product not found with id: " + id
-                ));
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Product not found with id: " + id)
+                );
 
         if (request.getAvailabilityStatus() == ProductStatus.DISCONTINUED) {
             throw new IllegalArgumentException(
@@ -57,18 +62,64 @@ public class ProductService {
         product.setAvailabilityStatus(request.getAvailabilityStatus());
 
         Product updated = productRepository.save(product);
+
         return new ProductResponse(updated);
     }
 
     public void deleteProduct(Integer id) {
+
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Product not found with id: " + id
-                ));
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Product not found with id: " + id)
+                );
 
         product.setAvailabilityStatus(ProductStatus.DISCONTINUED);
         productRepository.save(product);
     }
 
 
+    @Transactional(readOnly = true)
+    public List<ProductResponse> searchProducts(
+            String name,
+            ProductCategory category,
+            ProductStatus status
+    ) {
+
+        List<Product> products;
+
+        if (name != null) {
+            products = productRepository.findByProductNameContainingIgnoreCase(name);
+        }
+        else if (category != null && status != null) {
+            products = productRepository
+                    .findByProductCategoryAndAvailabilityStatus(category, status);
+        }
+        else if (category != null) {
+            products = productRepository.findByProductCategory(category);
+        }
+        else if (status != null) {
+            products = productRepository.findByAvailabilityStatus(status);
+        }
+        else {
+            products = productRepository.findAll();
+        }
+
+        return products.stream()
+                .map(ProductResponse::new)
+                .toList();
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<ProductResponse> sortProductsByPrice(String direction) {
+
+        Sort sort = direction.equalsIgnoreCase("desc")
+                ? Sort.by("unitPrice").descending()
+                : Sort.by("unitPrice").ascending();
+
+        return productRepository.findAll(sort)
+                .stream()
+                .map(ProductResponse::new)
+                .toList();
+    }
 }
