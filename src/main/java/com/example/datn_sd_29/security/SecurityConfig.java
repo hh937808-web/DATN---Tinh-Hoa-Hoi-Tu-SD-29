@@ -38,6 +38,7 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/products/**").permitAll()
+                        .requestMatchers("/api/invoice/**").permitAll()//cho phép test API phần Invoice
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
