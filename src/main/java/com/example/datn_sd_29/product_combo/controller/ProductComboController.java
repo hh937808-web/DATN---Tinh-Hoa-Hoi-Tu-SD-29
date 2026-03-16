@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -17,6 +18,7 @@ import java.util.List;
 public class ProductComboController {
 
     private final ProductComboService productComboService;
+
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProductComboResponse>>> getAllProductCombos() {
@@ -27,6 +29,7 @@ public class ProductComboController {
                 )
         );
     }
+
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProductComboResponse>> createProductCombo(
@@ -54,9 +57,12 @@ public class ProductComboController {
         );
     }
 
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteProductCombo(@PathVariable Integer id) {
+
         productComboService.deleteProductCombo(id);
+
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Product combo discontinued successfully!",
@@ -64,4 +70,66 @@ public class ProductComboController {
                 )
         );
     }
+
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> searchCombo(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) BigDecimal price,
+            @RequestParam(required = false) Boolean status,
+            @RequestParam(required = false) String productName
+    ) {
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Search product combo successfully!",
+                        productComboService.searchCombo(name, price, status, productName)
+                )
+        );
+    }
+
+
+    @GetMapping("/sort/price/asc")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> sortPriceAsc() {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Sort price asc successfully!",
+                        productComboService.sortByPriceAsc()
+                )
+        );
+    }
+
+
+    @GetMapping("/sort/price/desc")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> sortPriceDesc() {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Sort price desc successfully!",
+                        productComboService.sortByPriceDesc()
+                )
+        );
+    }
+
+
+    @GetMapping("/sort/created/asc")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> sortCreatedAsc() {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Sort created date asc successfully!",
+                        productComboService.sortByCreatedAsc()
+                )
+        );
+    }
+
+
+    @GetMapping("/sort/created/desc")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> sortCreatedDesc() {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Sort created date desc successfully!",
+                        productComboService.sortByCreatedDesc()
+                )
+        );
+    }
+
 }

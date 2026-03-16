@@ -7,6 +7,7 @@ import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -16,6 +17,7 @@ public class ProductComboService {
 
     private final ProductComboRepository productComboRepository;
 
+
     public List<ProductComboResponse> getAllProductCombos() {
         return productComboRepository.findAll()
                 .stream()
@@ -23,7 +25,9 @@ public class ProductComboService {
                 .toList();
     }
 
+
     public ProductComboResponse createProductCombo(ProductComboRequest request) {
+
         ProductCombo combo = new ProductCombo();
         combo.setComboName(request.getComboName());
         combo.setDescription(request.getDescription());
@@ -36,11 +40,14 @@ public class ProductComboService {
         );
     }
 
+
     public ProductComboResponse updateProductCombo(Integer id, ProductComboRequest request) {
+
         ProductCombo combo = productComboRepository.findById(id)
                 .orElseThrow(() ->
                         new IllegalArgumentException("ProductCombo not found with id: " + id)
                 );
+
         if (combo.getIsActive()
                 && Boolean.FALSE.equals(request.getIsActive())) {
             throw new IllegalArgumentException(
@@ -51,7 +58,6 @@ public class ProductComboService {
         combo.setComboName(request.getComboName());
         combo.setDescription(request.getDescription());
         combo.setComboPrice(request.getComboPrice());
-
 
         if (!combo.getIsActive()
                 && Boolean.TRUE.equals(request.getIsActive())) {
@@ -65,8 +71,9 @@ public class ProductComboService {
         );
     }
 
-    // delete = true -> false
+
     public void deleteProductCombo(Integer id) {
+
         ProductCombo combo = productComboRepository.findById(id)
                 .orElseThrow(() ->
                         new IllegalArgumentException("ProductCombo not found with id: " + id)
@@ -74,6 +81,93 @@ public class ProductComboService {
 
         combo.setIsActive(false);
         combo.setUpdatedAt(Instant.now());
+
         productComboRepository.save(combo);
     }
+
+
+    public List<ProductComboResponse> searchCombo(
+            String name,
+            BigDecimal price,
+            Boolean status,
+            String productName
+    ) {
+
+        List<ProductCombo> combos = productComboRepository.findAll();
+
+
+        if (name != null && !name.isEmpty()) {
+            combos = combos.stream()
+                    .filter(c ->
+                            c.getComboName() != null &&
+                                    c.getComboName().toLowerCase().contains(name.toLowerCase()))
+                    .toList();
+        }
+
+
+        if (price != null) {
+            combos = combos.stream()
+                    .filter(c ->
+                            c.getComboPrice() != null &&
+                                    c.getComboPrice().compareTo(price) == 0)
+                    .toList();
+        }
+
+
+        if (status != null) {
+            combos = combos.stream()
+                    .filter(c ->
+                            c.getIsActive() != null &&
+                                    c.getIsActive().equals(status))
+                    .toList();
+        }
+
+
+        if (productName != null && !productName.isEmpty()) {
+
+            List<ProductCombo> combosByProduct =
+                    productComboRepository.findByProductName(productName);
+
+            combos = combos.stream()
+                    .filter(combosByProduct::contains)
+                    .toList();
+        }
+
+        return combos.stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
+
+    public List<ProductComboResponse> sortByPriceAsc() {
+        return productComboRepository.findAllByOrderByComboPriceAsc()
+                .stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
+
+    public List<ProductComboResponse> sortByPriceDesc() {
+        return productComboRepository.findAllByOrderByComboPriceDesc()
+                .stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
+
+    public List<ProductComboResponse> sortByCreatedAsc() {
+        return productComboRepository.findAllByOrderByCreatedAtAsc()
+                .stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
+
+    public List<ProductComboResponse> sortByCreatedDesc() {
+        return productComboRepository.findAllByOrderByCreatedAtDesc()
+                .stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
 }
