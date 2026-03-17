@@ -51,6 +51,14 @@ public class ReservationController {
         return ResponseEntity.ok(ApiResponse.success("OK", response));
     }
 
+    @PostMapping("/{reservationCode}/check-in")
+    public ResponseEntity<ApiResponse<ReservationResponse>> checkInReservation(
+            @PathVariable String reservationCode
+    ) {
+        ReservationResponse response = reservationService.checkInReservation(reservationCode);
+        return ResponseEntity.ok(ApiResponse.success("Check-in thành công", response));
+    }
+
     @PostMapping("/{reservationCode}/send-email")
     public ResponseEntity<ApiResponse<Void>> sendReservationEmail(
             @PathVariable String reservationCode

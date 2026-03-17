@@ -40,6 +40,7 @@ public class ReservationService {
     private final EmailService emailService;
 
     private static final int RESERVATION_DURATION_MINUTES = 90;
+    private static final int PRE_RESERVE_BUFFER_MINUTES = 30;
     private static final int MAX_TABLES_TO_COMBINE = 5;
     private static final Set<String> ACTIVE_STATUSES = Set.of("RESERVED", "CONFIRMED", "IN_PROGRESS");
     private static final Set<String> PROMOTION_OPTIONS = Set.of(
@@ -149,6 +150,36 @@ public class ReservationService {
         return buildReservationResponse(invoice, customer, toTableInfos(tables));
     }
 
+    public ReservationResponse checkInReservation(String reservationCode) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
+        }
+
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));
+
+        String status = invoice.getInvoiceStatus();
+        if (status == null || "CANCELLED".equals(status) || "NO_SHOW".equals(status)) {
+            throw new IllegalArgumentException("Reservation is not valid for check-in");
+        }
+
+        invoice.setInvoiceStatus("IN_PROGRESS");
+        invoice.setCheckedInAt(java.time.Instant.now());
+        invoice = invoiceRepository.save(invoice);
+
+        List<InvoiceDiningTable> links =
+                invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+
+        List<DiningTable> tables = links.stream()
+                .map(InvoiceDiningTable::getDiningTable)
+                .collect(Collectors.toList());
+
+        Customer customer = invoice.getCustomer();
+        return buildReservationResponse(invoice, customer, toTableInfos(tables));
+    }
+
     public void sendReservationDetailsEmail(String reservationCode) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
@@ -201,6 +232,7 @@ public class ReservationService {
                 invoice.getGuestCount(),
                 fullName,
                 phoneNumber,
+                invoice.getInvoiceStatus(),
                 invoice.getPromotionType(),
                 invoice.getReservationNote(),
                 invoice.getFoodNote(),
@@ -227,7 +259,7 @@ public class ReservationService {
             throw new IllegalArgumentException("Guest count must be greater than 0");
         }
 
-        LocalDateTime windowStart = reservedAt.minusMinutes(RESERVATION_DURATION_MINUTES);
+        LocalDateTime windowStart = reservedAt.minusMinutes(PRE_RESERVE_BUFFER_MINUTES);
         LocalDateTime windowEnd = reservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
 
         List<DiningTable> candidates = diningTableRepository
@@ -236,7 +268,7 @@ public class ReservationService {
         return candidates.stream()
                 .filter(this::isTableServiceable)
                 .filter(table -> !invoiceDiningTableRepository.existsOverlappingReservation(
-                        table.getId(), ACTIVE_STATUSES, windowStart, windowEnd))
+                        table.getId(), ACTIVE_STATUSES, windowStart, windowEnd, RESERVATION_DURATION_MINUTES))
                 .collect(Collectors.toList());
     }
 
@@ -313,7 +345,7 @@ public class ReservationService {
 
     private boolean isTableServiceable(DiningTable table) {
         String status = table.getTableStatus();
-        return status == null || "AVAILABLE".equals(status);
+        return status == null || !"OUT_OF_SERVICE".equals(status);
     }
 
     private int capacitySafe(DiningTable table) {
