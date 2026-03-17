@@ -79,7 +79,25 @@ public class Invoice {
     @Column(name = "discount_amount", precision = 18, scale = 2)
     private BigDecimal discountAmount;
 
-    @ColumnDefault("isnull([subtotal_amount], 0)-isnull([discount_amount], 0)")
+    @Column(name = "manual_discount_percent", precision = 5, scale = 2)
+    private BigDecimal manualDiscountPercent;
+
+    @Column(name = "manual_discount_amount", precision = 18, scale = 2)
+    private BigDecimal manualDiscountAmount;
+
+    @Column(name = "tax_percent", precision = 5, scale = 2)
+    private BigDecimal taxPercent;
+
+    @Column(name = "tax_amount", precision = 18, scale = 2)
+    private BigDecimal taxAmount;
+
+    @Column(name = "service_fee_percent", precision = 5, scale = 2)
+    private BigDecimal serviceFeePercent;
+
+    @Column(name = "service_fee_amount", precision = 18, scale = 2)
+    private BigDecimal serviceFeeAmount;
+
+    @ColumnDefault("isnull([subtotal_amount], 0)-isnull([discount_amount], 0)+isnull([tax_amount], 0)+isnull([service_fee_amount], 0)")
     @Column(name = "final_amount",insertable = false,updatable = false, precision = 19, scale = 2)
     private BigDecimal finalAmount;
 
