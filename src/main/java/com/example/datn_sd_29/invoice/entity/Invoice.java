@@ -55,6 +55,21 @@ public class Invoice {
     @Column(name = "reserved_at")
     private LocalDateTime reservedAt;
 
+    @Column(name = "guest_count")
+    private Integer guestCount;
+
+    @Size(max = 200)
+    @Column(name = "promotion_type", length = 200)
+    private String promotionType;
+
+    @Size(max = 500)
+    @Column(name = "reservation_note", length = 500)
+    private String reservationNote;
+
+    @Size(max = 1000)
+    @Column(name = "food_note", length = 1000)
+    private String foodNote;
+
     @Column(name = "checked_in_at")
     private Instant checkedInAt;
 

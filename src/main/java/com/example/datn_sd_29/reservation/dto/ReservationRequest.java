@@ -4,19 +4,29 @@ import jakarta.validation.constraints.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 public class ReservationRequest {
 
+    @NotBlank(message = "Full name is required")
+    private String fullName;
+
     @NotBlank(message = "Phone number is required")
-    @Pattern(regexp = "^\\d{10}$", message = "Phone is number must be 10 digits")
+    @Pattern(regexp = "^\\d{10}$", message = "Phone number must be 10 digits")
     private String phoneNumber;
+
+    @NotNull(message = "Guest count is required")
+    @Min(value = 1, message = "Guest count must be greater than 0")
+    private Integer guestCount;
 
     @NotNull(message = "Reserved time is required")
     private LocalDateTime reservedAt; // thời gian đến
 
-    @NotEmpty(message = "Dining table list is required")
-    private List<Integer> diningTableIds; // danh sách bàn
+    private String note;
+
+    private String foodNote;
+
+    @NotBlank(message = "Promotion type is required")
+    private String promotionType;
 
 }

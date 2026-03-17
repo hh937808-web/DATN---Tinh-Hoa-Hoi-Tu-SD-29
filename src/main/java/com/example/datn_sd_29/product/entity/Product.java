@@ -40,4 +40,8 @@ public class Product {
     @Column(name = "availability_status", length = 50)
     private ProductStatus availabilityStatus;
 
+    @Column(name = "stock_quantity")
+    private Integer stockQuantity;
+
+
 }

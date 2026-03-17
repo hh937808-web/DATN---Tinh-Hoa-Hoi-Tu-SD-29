@@ -3,6 +3,7 @@ package com.example.datn_sd_29.product.dto;
 import com.example.datn_sd_29.product.enums.ProductCategory;
 import com.example.datn_sd_29.product.enums.ProductStatus;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -10,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 public class ProductRequest {
+
     @NotBlank(message = "Product name is required")
     @Size(max = 100, message = "Product name max 100 characters")
     private String productName;
@@ -26,6 +28,13 @@ public class ProductRequest {
 
     @NotNull(message = "Availability status is required")
     private ProductStatus availabilityStatus;
+
+    @NotNull(message = "Stock quantity is required")
+    @Min(value = 0, message = "Stock must be >= 0")
+    private Integer stockQuantity;
+
+    public ProductRequest() {
+    }
 
     public String getProductName() {
         return productName;
@@ -65,5 +74,13 @@ public class ProductRequest {
 
     public void setAvailabilityStatus(ProductStatus availabilityStatus) {
         this.availabilityStatus = availabilityStatus;
+    }
+
+    public Integer getStockQuantity() {
+        return stockQuantity;
+    }
+
+    public void setStockQuantity(Integer stockQuantity) {
+        this.stockQuantity = stockQuantity;
     }
 }
