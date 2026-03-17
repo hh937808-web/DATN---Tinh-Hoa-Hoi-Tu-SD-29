@@ -49,7 +49,7 @@ public class InvoiceItem {
     private BigDecimal unitPrice;
 
     @ColumnDefault("[quantity]*[unit_price]")
-    @Column(name = "line_total", precision = 29, scale = 2)
+    @Column(name = "line_total", insertable = false, updatable = false, precision = 29, scale = 2)
     private BigDecimal lineTotal;
 
 }
