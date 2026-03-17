@@ -45,8 +45,8 @@ public class CustomerVoucher {
     @Column(name = "remaining_quantity")
     private Integer remainingQuantity;
 
-    @Column(name = "is_active")
-    private Boolean isActive;
+    @Column(name = "voucher_status", length = 20)
+    private String voucherStatus;
 
     @ColumnDefault("getdate()")
     @Column(name = "created_at")
