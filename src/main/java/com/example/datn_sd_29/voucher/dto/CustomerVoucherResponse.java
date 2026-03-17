@@ -21,7 +21,7 @@ public class CustomerVoucherResponse {
     private LocalDate expiresAt;
 
     private Integer remainingQuantity;
-    private Boolean isActive;
+    private String voucherStatus;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant createdAt;
@@ -39,7 +39,7 @@ public class CustomerVoucherResponse {
         this.issuedAt = voucher.getIssuedAt();
         this.expiresAt = voucher.getExpiresAt();
         this.remainingQuantity = voucher.getRemainingQuantity();
-        this.isActive = voucher.getIsActive();
+        this.voucherStatus = voucher.getVoucherStatus();
         this.createdAt = voucher.getCreatedAt();
     }
 
@@ -79,8 +79,8 @@ public class CustomerVoucherResponse {
         return remainingQuantity;
     }
 
-    public Boolean getIsActive() {
-        return isActive;
+    public String getVoucherStatus() {
+        return voucherStatus;
     }
 
     public Instant getCreatedAt() {

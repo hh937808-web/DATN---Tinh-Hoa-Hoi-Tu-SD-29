@@ -55,7 +55,7 @@ public class CustomerVoucherService {
         voucher.setIssuedAt(request.getIssuedAt());
         voucher.setExpiresAt(request.getExpiresAt());
         voucher.setRemainingQuantity(request.getRemainingQuantity());
-        voucher.setIsActive(true);
+        voucher.setVoucherStatus("ACTIVE");
         voucher.setCreatedAt(Instant.now());
 
         return new CustomerVoucherResponse(
@@ -70,7 +70,7 @@ public class CustomerVoucherService {
                         new IllegalArgumentException("CustomerVoucher not found with id: " + id)
                 );
 
-        if (voucher.getIsActive() && Boolean.FALSE.equals(request.getIsActive())) {
+        if ("ACTIVE".equals(voucher.getVoucherStatus()) && Boolean.FALSE.equals(request.getIsActive())) {
             throw new IllegalArgumentException("Cannot change status from ACTIVE to INACTIVE");
         }
 
@@ -84,8 +84,8 @@ public class CustomerVoucherService {
         voucher.setExpiresAt(request.getExpiresAt());
         voucher.setRemainingQuantity(request.getRemainingQuantity());
 
-        if (!voucher.getIsActive() && Boolean.TRUE.equals(request.getIsActive())) {
-            voucher.setIsActive(true);
+        if (!"ACTIVE".equals(voucher.getVoucherStatus()) && Boolean.TRUE.equals(request.getIsActive())) {
+            voucher.setVoucherStatus("ACTIVE");
         }
 
         return new CustomerVoucherResponse(
@@ -100,7 +100,7 @@ public class CustomerVoucherService {
                         new IllegalArgumentException("CustomerVoucher not found with id: " + id)
                 );
 
-        voucher.setIsActive(false);
+        voucher.setVoucherStatus("INACTIVE");
         customerVoucherRepository.save(voucher);
     }
 }
