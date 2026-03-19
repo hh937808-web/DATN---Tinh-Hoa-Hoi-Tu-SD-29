@@ -40,7 +40,7 @@ public class PendingRegister {
     @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
-    @Column(name = "otp_verified_at", nullable = false)
+    @Column(name = "otp_verified_at", nullable = true)
     private Instant otpVerifiedAt;
 
     @Column(name = "expires_at", nullable = false)
