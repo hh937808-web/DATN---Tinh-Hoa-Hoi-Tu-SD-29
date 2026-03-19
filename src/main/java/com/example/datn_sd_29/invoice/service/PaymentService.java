@@ -23,6 +23,7 @@ import com.example.datn_sd_29.voucher.entity.ProductComboVoucher;
 import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
+import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -119,6 +120,9 @@ public class PaymentService {
                 i.setName(item.getProductCombo().getComboName());
                 i.setType("COMBO");
                 i.setComboId(item.getProductCombo().getId());
+            } else if (item.getProductCombo() != null) {
+                i.setName(item.getProductCombo().getComboName());
+                i.setType("COMBO");
             } else {
                 i.setName("Unknown");
                 i.setType(item.getItemType());
@@ -306,6 +310,9 @@ public class PaymentService {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
 
             if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())) {
+            if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())
+                    || customerVoucher.getRemainingQuantity() == null
+                    || customerVoucher.getRemainingQuantity() < 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher is not available");
             }
 
@@ -470,6 +477,11 @@ public class PaymentService {
 
         if (customerVoucher != null) {
             customerVoucher.setVoucherStatus("USED");
+            int remain = customerVoucher.getRemainingQuantity() == null ? 0 : customerVoucher.getRemainingQuantity();
+            customerVoucher.setRemainingQuantity(Math.max(0, remain - 1));
+            if (customerVoucher.getRemainingQuantity() != null && customerVoucher.getRemainingQuantity() <= 0) {
+                customerVoucher.setVoucherStatus("INACTIVE");
+            }
             customerVoucherRepository.save(customerVoucher);
 
             InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
@@ -692,6 +704,23 @@ public class PaymentService {
             }
         }
         
+        if (customer == null) return List.of();
+        List<CustomerVoucher> vouchers = customerVoucherRepository
+                .findByCustomerIdAndVoucherStatus(customer.getId(), "ACTIVE");
+        List<PaymentVoucherResponse> result = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        for (CustomerVoucher v : vouchers) {
+            if (v.getRemainingQuantity() == null || v.getRemainingQuantity() < 1) continue;
+            if (v.getExpiresAt() != null && v.getExpiresAt().isBefore(today)) continue;
+            PaymentVoucherResponse dto = new PaymentVoucherResponse();
+            dto.setId(v.getId());
+            dto.setCode(v.getPersonalVoucher().getVoucherCode());
+            dto.setName(v.getPersonalVoucher().getVoucherName());
+            dto.setPercent(v.getPersonalVoucher().getDiscountPercent());
+            dto.setExpiresAt(v.getExpiresAt());
+            dto.setRemainingQuantity(v.getRemainingQuantity());
+            result.add(dto);
+        }
         return result;
     }
 }
