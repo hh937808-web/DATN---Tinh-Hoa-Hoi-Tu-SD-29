@@ -9,5 +9,7 @@ import java.util.Optional;
 public interface CustomerVoucherRepository extends JpaRepository<CustomerVoucher, Integer> {
     List<CustomerVoucher> findByCustomerIdAndVoucherStatus(Integer customerId, String voucherStatus);
 
+    List<CustomerVoucher> findByCustomerId(Integer customerId);
+
     Optional<CustomerVoucher> findByIdAndCustomerId(Integer id, Integer customerId);
 }

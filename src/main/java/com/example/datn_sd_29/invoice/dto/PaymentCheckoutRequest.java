@@ -15,6 +15,8 @@ public class PaymentCheckoutRequest {
     private Integer tableId;
 
     private Integer customerVoucherId;
+    
+    private List<String> voucherCodes; // Product/Combo voucher codes
 
     @Min(0)
     private Integer usePoints;

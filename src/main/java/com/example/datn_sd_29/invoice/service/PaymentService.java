@@ -18,6 +18,11 @@ import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceVoucherRepository;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.voucher.entity.CustomerVoucher;
+import com.example.datn_sd_29.voucher.entity.ProductVoucher;
+import com.example.datn_sd_29.voucher.entity.ProductComboVoucher;
+import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
+import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
+import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -48,6 +53,8 @@ public class PaymentService {
     private final InvoiceVoucherRepository invoiceVoucherRepository;
     private final CustomerRepository customerRepository;
     private final InvoicePaymentRepository invoicePaymentRepository;
+    private final ProductVoucherRepository productVoucherRepository;
+    private final ProductComboVoucherRepository productComboVoucherRepository;
 
     @Transactional(readOnly = true)
     public PaymentDetailResponse getPaymentByTable(Integer tableId) {
@@ -108,6 +115,11 @@ public class PaymentService {
             if (item.getProduct() != null) {
                 i.setName(item.getProduct().getProductName());
                 i.setType("PRODUCT");
+                i.setProductId(item.getProduct().getId());
+            } else if (item.getProductCombo() != null) {
+                i.setName(item.getProductCombo().getComboName());
+                i.setType("COMBO");
+                i.setComboId(item.getProductCombo().getId());
             } else if (item.getProductCombo() != null) {
                 i.setName(item.getProductCombo().getComboName());
                 i.setType("COMBO");
@@ -154,6 +166,133 @@ public class PaymentService {
 
         BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
         Customer customer = invoice.getCustomer();
+        
+        // Process Product/Combo vouchers
+        List<ProductVoucher> appliedProductVouchers = new ArrayList<>();
+        List<ProductComboVoucher> appliedComboVouchers = new ArrayList<>();
+        
+        if (request.getVoucherCodes() != null && !request.getVoucherCodes().isEmpty()) {
+            LocalDate today = LocalDate.now();
+            
+            for (String voucherCode : request.getVoucherCodes()) {
+                // Try to find as ProductVoucher first
+                ProductVoucher productVoucher = productVoucherRepository.findByVoucherCode(voucherCode).orElse(null);
+                
+                if (productVoucher != null) {
+                    // Validate ProductVoucher
+                    if (!Boolean.TRUE.equals(productVoucher.getIsActive())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " is not active");
+                    }
+                    
+                    if (productVoucher.getRemainingQuantity() == null || productVoucher.getRemainingQuantity() <= 0) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " has no remaining uses");
+                    }
+                    
+                    if (productVoucher.getValidFrom() != null && today.isBefore(productVoucher.getValidFrom())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " is not yet valid");
+                    }
+                    
+                    if (productVoucher.getValidTo() != null && today.isAfter(productVoucher.getValidTo())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " has expired");
+                    }
+                    
+                    // Check if invoice has matching product
+                    boolean hasMatchingProduct = items.stream()
+                        .anyMatch(item -> item.getProduct() != null && 
+                                         item.getProduct().getId().equals(productVoucher.getProduct().getId()));
+                    
+                    if (!hasMatchingProduct) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Invoice does not contain product for voucher " + voucherCode);
+                    }
+                    
+                    appliedProductVouchers.add(productVoucher);
+                    continue;
+                }
+                
+                // Try to find as ProductComboVoucher
+                ProductComboVoucher comboVoucher = productComboVoucherRepository.findByVoucherCode(voucherCode).orElse(null);
+                
+                if (comboVoucher != null) {
+                    // Validate ComboVoucher
+                    if (!Boolean.TRUE.equals(comboVoucher.getIsActive())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " is not active");
+                    }
+                    
+                    if (comboVoucher.getRemainingQuantity() == null || comboVoucher.getRemainingQuantity() <= 0) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " has no remaining uses");
+                    }
+                    
+                    if (comboVoucher.getValidFrom() != null && today.isBefore(comboVoucher.getValidFrom())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " is not yet valid");
+                    }
+                    
+                    if (comboVoucher.getValidTo() != null && today.isAfter(comboVoucher.getValidTo())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Voucher " + voucherCode + " has expired");
+                    }
+                    
+                    // Check if invoice has matching combo
+                    boolean hasMatchingCombo = items.stream()
+                        .anyMatch(item -> item.getProductCombo() != null && 
+                                         item.getProductCombo().getId().equals(comboVoucher.getProductCombo().getId()));
+                    
+                    if (!hasMatchingCombo) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                            "Invoice does not contain combo for voucher " + voucherCode);
+                    }
+                    
+                    appliedComboVouchers.add(comboVoucher);
+                    continue;
+                }
+                
+                // Voucher not found
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                    "Voucher code " + voucherCode + " not found");
+            }
+            
+            // Calculate item-level discounts
+            for (ProductVoucher pv : appliedProductVouchers) {
+                // Find first matching item
+                InvoiceItem matchingItem = items.stream()
+                    .filter(item -> item.getProduct() != null && 
+                                   item.getProduct().getId().equals(pv.getProduct().getId()))
+                    .findFirst()
+                    .orElse(null);
+                
+                if (matchingItem != null && pv.getDiscountPercent() != null && pv.getDiscountPercent() > 0) {
+                    BigDecimal itemTotal = matchingItem.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(matchingItem.getQuantity()));
+                    BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(pv.getDiscountPercent()))
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                    itemVoucherDiscount = itemVoucherDiscount.add(discount);
+                }
+            }
+            
+            for (ProductComboVoucher pcv : appliedComboVouchers) {
+                // Find first matching item
+                InvoiceItem matchingItem = items.stream()
+                    .filter(item -> item.getProductCombo() != null && 
+                                   item.getProductCombo().getId().equals(pcv.getProductCombo().getId()))
+                    .findFirst()
+                    .orElse(null);
+                
+                if (matchingItem != null && pcv.getDiscountPercent() != null && pcv.getDiscountPercent() > 0) {
+                    BigDecimal itemTotal = matchingItem.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(matchingItem.getQuantity()));
+                    BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(pcv.getDiscountPercent()))
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                    itemVoucherDiscount = itemVoucherDiscount.add(discount);
+                }
+            }
+        }
 
         int usePoints = request.getUsePoints() == null ? 0 : request.getUsePoints();
         int customerPoints = customer == null || customer.getLoyaltyPoints() == null
@@ -170,6 +309,7 @@ public class PaymentService {
                     .findByIdAndCustomerId(request.getCustomerVoucherId(), customer.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
 
+            if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())) {
             if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())
                     || customerVoucher.getRemainingQuantity() == null
                     || customerVoucher.getRemainingQuantity() < 1) {
@@ -336,6 +476,7 @@ public class PaymentService {
         }
 
         if (customerVoucher != null) {
+            customerVoucher.setVoucherStatus("USED");
             int remain = customerVoucher.getRemainingQuantity() == null ? 0 : customerVoucher.getRemainingQuantity();
             customerVoucher.setRemainingQuantity(Math.max(0, remain - 1));
             if (customerVoucher.getRemainingQuantity() != null && customerVoucher.getRemainingQuantity() <= 0) {
@@ -347,6 +488,30 @@ public class PaymentService {
             invoiceVoucher.setInvoice(invoice);
             invoiceVoucher.setVoucherScope("CUSTOMER");
             invoiceVoucher.setCustomerVoucher(customerVoucher);
+            invoiceVoucherRepository.save(invoiceVoucher);
+        }
+        
+        // Decrement remaining quantity and save Product vouchers
+        for (ProductVoucher pv : appliedProductVouchers) {
+            pv.setRemainingQuantity(pv.getRemainingQuantity() - 1);
+            productVoucherRepository.save(pv);
+            
+            InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
+            invoiceVoucher.setInvoice(invoice);
+            invoiceVoucher.setVoucherScope("PRODUCT");
+            invoiceVoucher.setProductVoucher(pv);
+            invoiceVoucherRepository.save(invoiceVoucher);
+        }
+        
+        // Decrement remaining quantity and save Combo vouchers
+        for (ProductComboVoucher pcv : appliedComboVouchers) {
+            pcv.setRemainingQuantity(pcv.getRemainingQuantity() - 1);
+            productComboVoucherRepository.save(pcv);
+            
+            InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
+            invoiceVoucher.setInvoice(invoice);
+            invoiceVoucher.setVoucherScope("COMBO");
+            invoiceVoucher.setProductComboVoucher(pcv);
             invoiceVoucherRepository.save(invoiceVoucher);
         }
 
@@ -408,6 +573,137 @@ public class PaymentService {
     }
 
     private List<PaymentVoucherResponse> loadAvailableVouchers(Customer customer) {
+        List<PaymentVoucherResponse> result = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        
+        // 1. Load Customer Vouchers (Personal vouchers for specific customer)
+        if (customer != null) {
+            List<CustomerVoucher> customerVouchers = customerVoucherRepository
+                    .findByCustomerId(customer.getId());
+            
+            for (CustomerVoucher cv : customerVouchers) {
+                boolean isExpired = cv.getExpiresAt() != null && cv.getExpiresAt().isBefore(today);
+                String status;
+                boolean isActive;
+                
+                if ("USED".equalsIgnoreCase(cv.getVoucherStatus())) {
+                    status = "USED";
+                    isActive = false;
+                } else if (isExpired) {
+                    status = "EXPIRED";
+                    isActive = false;
+                } else if ("ACTIVE".equalsIgnoreCase(cv.getVoucherStatus())) {
+                    status = "ACTIVE";
+                    isActive = true;
+                } else {
+                    status = "INACTIVE";
+                    isActive = false;
+                }
+                
+                PaymentVoucherResponse dto = new PaymentVoucherResponse();
+                dto.setId(cv.getId());
+                dto.setCode(cv.getPersonalVoucher().getVoucherCode());
+                dto.setName(cv.getPersonalVoucher().getVoucherName());
+                dto.setPercent(cv.getPersonalVoucher().getDiscountPercent());
+                dto.setExpiresAt(cv.getExpiresAt());
+                dto.setRemainingQuantity(cv.getRemainingQuantity());
+                dto.setVoucherStatus(status);
+                dto.setVoucherType("CUSTOMER");
+                dto.setApplicableItemId(null);
+                dto.setApplicableItemName(null);
+                
+                if (isActive) {
+                    result.add(0, dto); // Add active vouchers at the beginning
+                } else {
+                    result.add(dto); // Add used/expired/inactive vouchers at the end
+                }
+            }
+        }
+        
+        // 2. Load Product Vouchers (Vouchers for specific products)
+        List<ProductVoucher> productVouchers = productVoucherRepository.findByIsActiveTrue();
+        for (ProductVoucher pv : productVouchers) {
+            boolean isExpired = (pv.getValidTo() != null && pv.getValidTo().isBefore(today)) ||
+                               (pv.getValidFrom() != null && pv.getValidFrom().isAfter(today));
+            boolean hasRemainingUses = pv.getRemainingQuantity() != null && pv.getRemainingQuantity() > 0;
+            String status;
+            boolean isActive;
+            
+            if (isExpired) {
+                status = "EXPIRED";
+                isActive = false;
+            } else if (!hasRemainingUses) {
+                status = "USED";
+                isActive = false;
+            } else if (pv.getIsActive() != null && pv.getIsActive()) {
+                status = "ACTIVE";
+                isActive = true;
+            } else {
+                status = "INACTIVE";
+                isActive = false;
+            }
+            
+            PaymentVoucherResponse dto = new PaymentVoucherResponse();
+            dto.setId(pv.getId());
+            dto.setCode(pv.getVoucherCode());
+            dto.setName(pv.getVoucherName());
+            dto.setPercent(pv.getDiscountPercent());
+            dto.setExpiresAt(pv.getValidTo());
+            dto.setRemainingQuantity(pv.getRemainingQuantity());
+            dto.setVoucherStatus(status);
+            dto.setVoucherType("PRODUCT");
+            dto.setApplicableItemId(pv.getProduct().getId());
+            dto.setApplicableItemName(pv.getProduct().getProductName());
+            
+            if (isActive) {
+                result.add(0, dto); // Add active vouchers at the beginning
+            } else {
+                result.add(dto); // Add expired/inactive vouchers at the end
+            }
+        }
+        
+        // 3. Load Combo Vouchers (Vouchers for specific combos)
+        List<ProductComboVoucher> comboVouchers = productComboVoucherRepository.findByIsActiveTrue();
+        for (ProductComboVoucher pcv : comboVouchers) {
+            boolean isExpired = (pcv.getValidTo() != null && pcv.getValidTo().isBefore(today)) ||
+                               (pcv.getValidFrom() != null && pcv.getValidFrom().isAfter(today));
+            boolean hasRemainingUses = pcv.getRemainingQuantity() != null && pcv.getRemainingQuantity() > 0;
+            String status;
+            boolean isActive;
+            
+            if (isExpired) {
+                status = "EXPIRED";
+                isActive = false;
+            } else if (!hasRemainingUses) {
+                status = "USED";
+                isActive = false;
+            } else if (pcv.getIsActive() != null && pcv.getIsActive()) {
+                status = "ACTIVE";
+                isActive = true;
+            } else {
+                status = "INACTIVE";
+                isActive = false;
+            }
+            
+            PaymentVoucherResponse dto = new PaymentVoucherResponse();
+            dto.setId(pcv.getId());
+            dto.setCode(pcv.getVoucherCode());
+            dto.setName(pcv.getVoucherName());
+            dto.setPercent(pcv.getDiscountPercent());
+            dto.setExpiresAt(pcv.getValidTo());
+            dto.setRemainingQuantity(pcv.getRemainingQuantity());
+            dto.setVoucherStatus(status);
+            dto.setVoucherType("COMBO");
+            dto.setApplicableItemId(pcv.getProductCombo().getId());
+            dto.setApplicableItemName(pcv.getProductCombo().getComboName());
+            
+            if (isActive) {
+                result.add(0, dto); // Add active vouchers at the beginning
+            } else {
+                result.add(dto); // Add expired/inactive vouchers at the end
+            }
+        }
+        
         if (customer == null) return List.of();
         List<CustomerVoucher> vouchers = customerVoucherRepository
                 .findByCustomerIdAndVoucherStatus(customer.getId(), "ACTIVE");

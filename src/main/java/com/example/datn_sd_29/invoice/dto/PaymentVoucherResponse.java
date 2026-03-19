@@ -14,4 +14,8 @@ public class PaymentVoucherResponse {
     private Integer percent;
     private LocalDate expiresAt;
     private Integer remainingQuantity;
+    private String voucherStatus;
+    private String voucherType; // CUSTOMER, PRODUCT, COMBO
+    private Integer applicableItemId; // product_id or combo_id (for PRODUCT/COMBO vouchers)
+    private String applicableItemName; // product_name or combo_name
 }

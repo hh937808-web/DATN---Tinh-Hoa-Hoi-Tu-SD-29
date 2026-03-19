@@ -23,25 +23,27 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configure(http))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Public endpoints - không cần authentication
                         .requestMatchers(
-                                "/api/auth/register",
-                                "/api/auth/login",
-                                "/api/auth/otp",
-                                "/api/auth/otp/send",
-                                "/api/auth/otp/verify",
-                                "/error"
+                                "/api/auth/**",           // Authentication endpoints
+                                "/api/public/**",         // Public notification endpoints
+                                "/public/**",             // Direct public access
+                                "/error"                  // Error page
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET,"/api/products/**").permitAll()
-                        .requestMatchers(HttpMethod.GET,"/api/product-combos/**").permitAll()
-                        .requestMatchers(HttpMethod.GET,"/api/images/**").permitAll()
-                        .requestMatchers(HttpMethod.GET,"/api/product-combo-vouchers/**").permitAll()
-                        .requestMatchers(HttpMethod.GET,"/api/product-vouchers/**").permitAll()
+                        // Public GET endpoints cho khách hàng
+                        .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/product-combos/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/product-combo-vouchers/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/product-vouchers/**").permitAll()
+                        // Tất cả các request khác cần authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
