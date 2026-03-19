@@ -23,7 +23,6 @@ import com.example.datn_sd_29.voucher.entity.ProductComboVoucher;
 import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
-import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -309,7 +308,6 @@ public class PaymentService {
                     .findByIdAndCustomerId(request.getCustomerVoucherId(), customer.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
 
-            if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())) {
             if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())
                     || customerVoucher.getRemainingQuantity() == null
                     || customerVoucher.getRemainingQuantity() < 1) {
@@ -586,7 +584,10 @@ public class PaymentService {
                 String status;
                 boolean isActive;
                 
-                if ("USED".equalsIgnoreCase(cv.getVoucherStatus())) {
+                if (cv.getRemainingQuantity() == null || cv.getRemainingQuantity() <= 0) {
+                    status = "USED";
+                    isActive = false;
+                } else if ("USED".equalsIgnoreCase(cv.getVoucherStatus())) {
                     status = "USED";
                     isActive = false;
                 } else if (isExpired) {
@@ -704,23 +705,6 @@ public class PaymentService {
             }
         }
         
-        if (customer == null) return List.of();
-        List<CustomerVoucher> vouchers = customerVoucherRepository
-                .findByCustomerIdAndVoucherStatus(customer.getId(), "ACTIVE");
-        List<PaymentVoucherResponse> result = new ArrayList<>();
-        LocalDate today = LocalDate.now();
-        for (CustomerVoucher v : vouchers) {
-            if (v.getRemainingQuantity() == null || v.getRemainingQuantity() < 1) continue;
-            if (v.getExpiresAt() != null && v.getExpiresAt().isBefore(today)) continue;
-            PaymentVoucherResponse dto = new PaymentVoucherResponse();
-            dto.setId(v.getId());
-            dto.setCode(v.getPersonalVoucher().getVoucherCode());
-            dto.setName(v.getPersonalVoucher().getVoucherName());
-            dto.setPercent(v.getPersonalVoucher().getDiscountPercent());
-            dto.setExpiresAt(v.getExpiresAt());
-            dto.setRemainingQuantity(v.getRemainingQuantity());
-            result.add(dto);
-        }
         return result;
     }
 }
