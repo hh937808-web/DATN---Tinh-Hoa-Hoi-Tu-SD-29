@@ -28,6 +28,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
+        String path = request.getRequestURI();
+        
+        // Bỏ qua authentication cho các endpoint công khai
+        if (isPublicPath(path)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         String authHeader = request.getHeader("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
@@ -49,5 +57,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
+    }
+    
+    /**
+     * Kiểm tra xem path có phải là public endpoint không
+     */
+    private boolean isPublicPath(String path) {
+        return path.startsWith("/public/") ||
+               path.startsWith("/api/public/") ||
+               path.startsWith("/api/auth/");
     }
 }

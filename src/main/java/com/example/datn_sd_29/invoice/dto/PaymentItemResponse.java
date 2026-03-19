@@ -15,4 +15,7 @@ public class PaymentItemResponse {
     private BigDecimal unitPrice;
     private BigDecimal discount;
     private BigDecimal lineTotal;
+    private String voucherCode; // Voucher code applied to this item
+    private Integer productId; // For matching with vouchers
+    private Integer comboId; // For matching with vouchers
 }

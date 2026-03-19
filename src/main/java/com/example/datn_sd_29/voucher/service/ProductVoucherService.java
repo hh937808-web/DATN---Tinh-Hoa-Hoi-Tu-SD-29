@@ -40,7 +40,23 @@ public class ProductVoucherService {
                 ));
 
         ProductVoucher voucher = new ProductVoucher();
-        voucher.setVoucherCode(request.getVoucherCode());
+        
+        // Voucher code generation logic:
+        // 1. If admin provides code -> use it
+        // 2. If code is "AUTO" -> generate based on product ID (P{productId})
+        // 3. If code is "RANDOM" -> generate random code
+        // 4. If code is empty/null -> generate random code (default)
+        String voucherCode = request.getVoucherCode();
+        if (voucherCode == null || voucherCode.trim().isEmpty()) {
+            voucherCode = generateRandomVoucherCode();
+        } else if ("AUTO".equalsIgnoreCase(voucherCode.trim())) {
+            voucherCode = generateProductVoucherCode(request.getProductId());
+        } else if ("RANDOM".equalsIgnoreCase(voucherCode.trim())) {
+            voucherCode = generateRandomVoucherCode();
+        }
+        // else: use admin's custom code as-is
+        
+        voucher.setVoucherCode(voucherCode);
         voucher.setVoucherName(request.getVoucherName());
         voucher.setDiscountPercent(request.getDiscountPercent());
         voucher.setProduct(product);
@@ -53,6 +69,30 @@ public class ProductVoucherService {
         ProductVoucher saved = productVoucherRepository.save(voucher);
 
         return new ProductVoucherResponse(saved);
+    }
+    
+    /**
+     * Generate voucher code based on product ID
+     * Format: P{productId}
+     * Example: Product ID 1003 -> P1003
+     */
+    private String generateProductVoucherCode(Integer productId) {
+        return "P" + productId;
+    }
+    
+    /**
+     * Generate random voucher code
+     * Format: 8 uppercase alphanumeric characters
+     * Example: VCH8X2K9, A7B3C9D2
+     */
+    private String generateRandomVoucherCode() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        StringBuilder code = new StringBuilder(8);
+        java.util.Random random = new java.util.Random();
+        for (int i = 0; i < 8; i++) {
+            code.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return code.toString();
     }
 
     public ProductVoucherResponse update(Integer id, ProductVoucherRequest request) {

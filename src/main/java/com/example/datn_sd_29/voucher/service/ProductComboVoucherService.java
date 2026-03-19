@@ -34,7 +34,23 @@ public class ProductComboVoucherService {
                 );
 
         ProductComboVoucher voucher = new ProductComboVoucher();
-        voucher.setVoucherCode(request.getVoucherCode());
+        
+        // Voucher code generation logic:
+        // 1. If admin provides code -> use it
+        // 2. If code is "AUTO" -> generate based on combo ID (C{comboId})
+        // 3. If code is "RANDOM" -> generate random code
+        // 4. If code is empty/null -> generate random code (default)
+        String voucherCode = request.getVoucherCode();
+        if (voucherCode == null || voucherCode.trim().isEmpty()) {
+            voucherCode = generateRandomVoucherCode();
+        } else if ("AUTO".equalsIgnoreCase(voucherCode.trim())) {
+            voucherCode = generateComboVoucherCode(request.getProductComboId());
+        } else if ("RANDOM".equalsIgnoreCase(voucherCode.trim())) {
+            voucherCode = generateRandomVoucherCode();
+        }
+        // else: use admin's custom code as-is
+        
+        voucher.setVoucherCode(voucherCode);
         voucher.setVoucherName(request.getVoucherName());
         voucher.setDiscountPercent(request.getDiscountPercent());
         voucher.setProductCombo(combo);
@@ -47,6 +63,30 @@ public class ProductComboVoucherService {
         ProductComboVoucher saved = productComboVoucherRepository.save(voucher);
 
         return new ProductComboVoucherResponse(saved);
+    }
+    
+    /**
+     * Generate voucher code based on combo ID
+     * Format: C{comboId}
+     * Example: Combo ID 5 -> C5
+     */
+    private String generateComboVoucherCode(Integer comboId) {
+        return "C" + comboId;
+    }
+    
+    /**
+     * Generate random voucher code
+     * Format: 8 uppercase alphanumeric characters
+     * Example: VCH8X2K9, A7B3C9D2
+     */
+    private String generateRandomVoucherCode() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        StringBuilder code = new StringBuilder(8);
+        java.util.Random random = new java.util.Random();
+        for (int i = 0; i < 8; i++) {
+            code.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return code.toString();
     }
 
     public ProductComboVoucherResponse update(Integer id, ProductComboVoucherRequest request) {
