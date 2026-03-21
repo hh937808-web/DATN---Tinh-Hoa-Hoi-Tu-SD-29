@@ -1,5 +1,6 @@
 package com.example.datn_sd_29.reservation.service;
 
+import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
@@ -38,6 +39,7 @@ public class ReservationService {
     private final InvoiceDiningTableRepository invoiceDiningTableRepository;
     private final EmployeeRepository employeeRepository;
     private final EmailService emailService;
+    private final TableStatusBroadcastService tableStatusBroadcastService;
 
     private static final int RESERVATION_DURATION_MINUTES = 90;
     private static final int PRE_RESERVE_BUFFER_MINUTES = 30;
@@ -98,6 +100,9 @@ public class ReservationService {
             throw new IllegalArgumentException("Không còn bàn phù hợp trong thời gian đã chọn");
         }
 
+        // Validate 120-minute gap from existing reservations (Requirements 6.1, 6.2, 6.3, 6.4, 6.5)
+        validateReservationGap(selectedTables, reservedAt);
+
         Invoice invoice = new Invoice();
         invoice.setCustomer(customer);
 
@@ -124,6 +129,12 @@ public class ReservationService {
             idt.setDiningTable(table);
             invoiceDiningTableRepository.save(idt);
         }
+
+        // Broadcast RESERVED status via WebSocket
+        List<Integer> tableIds = selectedTables.stream()
+                .map(DiningTable::getId)
+                .collect(Collectors.toList());
+        tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
 
         List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
         return buildReservationResponse(invoice, customer, tables);
@@ -165,16 +176,86 @@ public class ReservationService {
             throw new IllegalArgumentException("Reservation is not valid for check-in");
         }
 
-        invoice.setInvoiceStatus("IN_PROGRESS");
-        invoice.setCheckedInAt(java.time.Instant.now());
-        invoice = invoiceRepository.save(invoice);
-
+        // Get tables for this reservation
         List<InvoiceDiningTable> links =
                 invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
 
         List<DiningTable> tables = links.stream()
                 .map(InvoiceDiningTable::getDiningTable)
                 .collect(Collectors.toList());
+
+        // IMPORTANT: Handle table conflicts
+        final Integer currentInvoiceId = invoice.getId();
+        for (DiningTable table : tables) {
+            final Integer tableId = table.getId();
+            
+            // 1. Cancel all existing IN_PROGRESS invoices for this table
+            List<Invoice> inProgressInvoices = invoiceRepository.findAll().stream()
+                    .filter(inv -> "IN_PROGRESS".equals(inv.getInvoiceStatus()))
+                    .filter(inv -> !inv.getId().equals(currentInvoiceId))
+                    .filter(inv -> {
+                        List<InvoiceDiningTable> invTables = 
+                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
+                        return invTables.stream()
+                            .anyMatch(idt -> idt.getDiningTable() != null && 
+                                           idt.getDiningTable().getId().equals(tableId));
+                    })
+                    .collect(Collectors.toList());
+
+            for (Invoice existingInvoice : inProgressInvoices) {
+                existingInvoice.setInvoiceStatus("CANCELLED");
+                invoiceRepository.save(existingInvoice);
+            }
+            
+            // 2. Remove this table from all other RESERVED invoices
+            List<Invoice> reservedInvoices = invoiceRepository.findAll().stream()
+                    .filter(inv -> "RESERVED".equals(inv.getInvoiceStatus()))
+                    .filter(inv -> !inv.getId().equals(currentInvoiceId))
+                    .filter(inv -> {
+                        List<InvoiceDiningTable> invTables = 
+                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
+                        return invTables.stream()
+                            .anyMatch(idt -> idt.getDiningTable() != null && 
+                                           idt.getDiningTable().getId().equals(tableId));
+                    })
+                    .collect(Collectors.toList());
+
+            for (Invoice reservedInvoice : reservedInvoices) {
+                // Remove this table from the reserved invoice
+                List<InvoiceDiningTable> reservedTables = 
+                    invoiceDiningTableRepository.findByInvoiceIdWithTable(reservedInvoice.getId());
+                
+                for (InvoiceDiningTable idt : reservedTables) {
+                    if (idt.getDiningTable() != null && 
+                        idt.getDiningTable().getId().equals(tableId)) {
+                        invoiceDiningTableRepository.delete(idt);
+                    }
+                }
+                
+                // If the reserved invoice has no tables left, cancel it
+                List<InvoiceDiningTable> remainingTables = 
+                    invoiceDiningTableRepository.findByInvoiceIdWithTable(reservedInvoice.getId());
+                if (remainingTables.isEmpty()) {
+                    reservedInvoice.setInvoiceStatus("CANCELLED");
+                    invoiceRepository.save(reservedInvoice);
+                }
+            }
+        }
+
+        // Now set this invoice to IN_PROGRESS
+        invoice.setInvoiceStatus("IN_PROGRESS");
+        invoice.setCheckedInAt(java.time.Instant.now());
+        invoice = invoiceRepository.save(invoice);
+
+        // Update table status to IN_USE (fix for table status display mismatch)
+        List<Integer> tableIds = tables.stream()
+                .map(DiningTable::getId)
+                .collect(Collectors.toList());
+        
+        if (!tableIds.isEmpty()) {
+            diningTableRepository.updateTableStatusByIdIn(tableIds, "IN_USE");
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "IN_USE");
+        }
 
         Customer customer = invoice.getCustomer();
         return buildReservationResponse(invoice, customer, toTableInfos(tables));
@@ -350,5 +431,44 @@ public class ReservationService {
 
     private int capacitySafe(DiningTable table) {
         return table.getSeatingCapacity() == null ? 0 : table.getSeatingCapacity();
+    }
+
+    /**
+     * Validates that the new reservation has a 120-minute gap from existing reservations
+     * Requirements 6.1, 6.2, 6.3, 6.4, 6.5
+     */
+    private void validateReservationGap(List<DiningTable> selectedTables, LocalDateTime newReservedAt) {
+        for (DiningTable table : selectedTables) {
+            // Query for existing RESERVED reservations for this table
+            List<Invoice> existingReservations = invoiceRepository.findAll().stream()
+                    .filter(inv -> "RESERVED".equals(inv.getInvoiceStatus()))
+                    .filter(inv -> inv.getReservedAt() != null)
+                    .filter(inv -> {
+                        List<InvoiceDiningTable> invTables = 
+                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
+                        return invTables.stream()
+                            .anyMatch(idt -> idt.getDiningTable() != null && 
+                                           idt.getDiningTable().getId().equals(table.getId()));
+                    })
+                    .collect(Collectors.toList());
+
+            for (Invoice existingReservation : existingReservations) {
+                LocalDateTime existingReservedAt = existingReservation.getReservedAt();
+                // Calculate end time = reserved_at + 90 minutes (Requirement 6.2)
+                LocalDateTime existingEndTime = existingReservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
+                
+                // Verify new reservation is at least 120 minutes after existing end time (Requirement 6.1)
+                LocalDateTime minimumAllowedTime = existingEndTime.plusMinutes(120);
+                
+                if (newReservedAt.isBefore(minimumAllowedTime)) {
+                    // Format descriptive error message (Requirement 6.3)
+                    throw new IllegalArgumentException(
+                        String.format("Cannot create reservation: table %s has a reservation ending at %s, minimum 120-minute gap required",
+                            table.getTableName(),
+                            existingEndTime.toString())
+                    );
+                }
+            }
+        }
     }
 }

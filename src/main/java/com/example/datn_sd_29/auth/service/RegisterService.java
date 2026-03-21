@@ -76,7 +76,7 @@ public class RegisterService {
             throw new IllegalArgumentException("Email hoặc mật khẩu không đúng");
         }
 
-        String token = jwtService.generateToken(customer.getEmail());
-        return new LoginResponse(token, customer.getEmail());
+        String token = jwtService.generateTokenWithRole(customer.getEmail(), "USER");
+        return new LoginResponse(token, customer.getEmail(), "USER");
     }
 }

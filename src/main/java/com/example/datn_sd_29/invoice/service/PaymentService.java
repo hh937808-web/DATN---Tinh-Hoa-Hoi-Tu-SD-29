@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.invoice.service;
 
 import com.example.datn_sd_29.customer.entity.Customer;
+import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentDetailResponse;
@@ -25,6 +26,7 @@ import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -54,6 +56,8 @@ public class PaymentService {
     private final InvoicePaymentRepository invoicePaymentRepository;
     private final ProductVoucherRepository productVoucherRepository;
     private final ProductComboVoucherRepository productComboVoucherRepository;
+    private final DiningTableRepository diningTableRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional(readOnly = true)
     public PaymentDetailResponse getPaymentByTable(Integer tableId) {
@@ -449,6 +453,19 @@ public class PaymentService {
 
         invoiceRepository.save(invoice);
 
+        // Clear table status to AVAILABLE after payment (Requirements 4.1, 4.3, 4.4)
+        List<InvoiceDiningTable> tableLinks = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        List<Integer> tableIds = tableLinks.stream()
+                .map(link -> link.getDiningTable().getId())
+                .toList();
+        
+        if (!tableIds.isEmpty()) {
+            diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
+            
+            // Broadcast table status change via WebSocket (Requirement 4.1)
+            broadcastTableStatusChange(tableIds, "AVAILABLE");
+        }
+
         if (paymentLines != null && !paymentLines.isEmpty()) {
             for (PaymentCheckoutRequest.PaymentLine line : paymentLines) {
                 InvoicePayment invoicePayment = new InvoicePayment();
@@ -568,6 +585,19 @@ public class PaymentService {
         }
         invoice.setInvoiceStatus(STATUS_CANCELLED);
         invoiceRepository.save(invoice);
+        
+        // Clear table status to AVAILABLE after cancellation (Requirements 4.2, 4.3, 4.4)
+        List<InvoiceDiningTable> tableLinks = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        List<Integer> tableIds = tableLinks.stream()
+                .map(link -> link.getDiningTable().getId())
+                .toList();
+        
+        if (!tableIds.isEmpty()) {
+            diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
+            
+            // Broadcast table status change via WebSocket (Requirement 4.2)
+            broadcastTableStatusChange(tableIds, "AVAILABLE");
+        }
     }
 
     private List<PaymentVoucherResponse> loadAvailableVouchers(Customer customer) {
@@ -706,5 +736,24 @@ public class PaymentService {
         }
         
         return result;
+    }
+    
+    /**
+     * Broadcasts table status change to all connected clients via WebSocket
+     * @param tableIds List of table IDs that changed status
+     * @param newStatus The new status of the tables
+     */
+    private void broadcastTableStatusChange(List<Integer> tableIds, String newStatus) {
+        try {
+            var message = new java.util.HashMap<String, Object>();
+            message.put("tableIds", tableIds);
+            message.put("status", newStatus);
+            message.put("timestamp", Instant.now().toString());
+            
+            messagingTemplate.convertAndSend("/topic/table-status", message);
+        } catch (Exception e) {
+            // Log error but don't fail the transaction
+            System.err.println("Failed to broadcast table status change: " + e.getMessage());
+        }
     }
 }

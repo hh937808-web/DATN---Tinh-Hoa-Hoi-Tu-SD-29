@@ -49,9 +49,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String email = jwtService.extractSubject(token);
+        String role = jwtService.extractRole(token);  // Extract role from JWT
+
+        // Create authority from role for Spring Security
+        List<org.springframework.security.core.GrantedAuthority> authorities = List.of(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)
+        );
 
         UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(email, null, List.of());
+                new UsernamePasswordAuthenticationToken(email, null, authorities);
 
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);

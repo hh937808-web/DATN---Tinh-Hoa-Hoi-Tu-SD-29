@@ -34,7 +34,9 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/**",           // Authentication endpoints
                                 "/api/public/**",         // Public notification endpoints
+                                "/api/dashboard/**",      // Dashboard endpoints
                                 "/public/**",             // Direct public access
+                                "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
                                 "/error"                  // Error page
                         ).permitAll()
                         // Public GET endpoints cho khách hàng

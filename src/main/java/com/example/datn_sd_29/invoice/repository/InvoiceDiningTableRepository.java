@@ -46,6 +46,8 @@ public interface InvoiceDiningTableRepository extends JpaRepository<InvoiceDinin
         join idt.invoice inv
         where idt.diningTable.id = :tableId
           and inv.invoiceStatus = :status
+        order by inv.checkedInAt desc nulls last, inv.reservedAt desc nulls last
+        limit 1
     """)
     Optional<Invoice> findInvoiceByTableAndStatus(
             @Param("tableId") Integer tableId,
