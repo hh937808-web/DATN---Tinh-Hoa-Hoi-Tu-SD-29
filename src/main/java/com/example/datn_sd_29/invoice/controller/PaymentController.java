@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/reception/payment")
 @RequiredArgsConstructor
@@ -31,6 +33,18 @@ public class PaymentController {
     ) {
         PaymentDetailResponse response = paymentService.getPaymentByTable(tableId);
         return ResponseEntity.ok(ApiResponse.success("OK", response));
+    }
+
+    @GetMapping("/all-in-progress")
+    public ResponseEntity<ApiResponse<List<PaymentDetailResponse>>> getAllInProgress() {
+        List<PaymentDetailResponse> invoices = paymentService.getAllInProgressInvoices();
+        return ResponseEntity.ok(ApiResponse.success("OK", invoices));
+    }
+
+    @GetMapping("/debug/all-invoices")
+    public ResponseEntity<ApiResponse<List<String>>> debugAllInvoices() {
+        List<String> debug = paymentService.debugAllInvoices();
+        return ResponseEntity.ok(ApiResponse.success("Debug info", debug));
     }
 
     @PostMapping("/checkout")

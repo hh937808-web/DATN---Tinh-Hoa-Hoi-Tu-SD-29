@@ -63,4 +63,20 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
     // No-show detection query
     @Query("SELECT i FROM Invoice i WHERE i.invoiceStatus = 'RESERVED' AND i.reservedAt < :cutoffTime")
     List<Invoice> findExpiredReservations(@Param("cutoffTime") LocalDateTime cutoffTime);
+
+    // Find reservations by customer phone number
+    @Query("SELECT i FROM Invoice i " +
+           "WHERE i.customer.phoneNumber = :phoneNumber " +
+           "AND i.invoiceStatus = 'RESERVED' " +
+           "ORDER BY i.reservedAt ASC")
+    List<Invoice> findReservationsByPhoneNumber(@Param("phoneNumber") String phoneNumber);
+
+    // Find all RESERVED reservations
+    @Query("SELECT i FROM Invoice i " +
+           "WHERE i.invoiceStatus = 'RESERVED' " +
+           "ORDER BY i.reservedAt ASC")
+    List<Invoice> findAllReservedReservations();
+
+    // Find invoices by status
+    List<Invoice> findByInvoiceStatus(String invoiceStatus);
 }

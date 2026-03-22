@@ -16,7 +16,7 @@ public class PasswordHashTest {
     @Test
     public void testPasswordHash() {
         String rawPassword = "123";
-        String storedHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhCu";
+        String storedHash = "$2a$10$DST.SCL0pCmR48JTZAOdh.ft.JsXeDgqp/lPwCAKSW4BqWEmjSPzK";
         
         boolean matches = passwordEncoder.matches(rawPassword, storedHash);
         

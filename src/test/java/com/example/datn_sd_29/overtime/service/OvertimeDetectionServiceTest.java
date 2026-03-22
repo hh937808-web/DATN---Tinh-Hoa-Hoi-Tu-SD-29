@@ -7,6 +7,7 @@ import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.overtime.dto.OvertimeDetectionResult;
 import com.example.datn_sd_29.overtime.service.impl.OvertimeDetectionServiceImpl;
+import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +44,9 @@ class OvertimeDetectionServiceTest {
     
     @Mock
     private AlertService alertService;
+    
+    @Mock
+    private TableStatusBroadcastService tableStatusBroadcastService;
     
     @InjectMocks
     private OvertimeDetectionServiceImpl overtimeDetectionService;

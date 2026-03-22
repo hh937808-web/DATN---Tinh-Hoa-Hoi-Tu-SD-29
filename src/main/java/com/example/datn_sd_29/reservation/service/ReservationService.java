@@ -15,6 +15,7 @@ import com.example.datn_sd_29.common.service.EmailService;
 import com.example.datn_sd_29.reservation.dto.AvailableTableResponse;
 import com.example.datn_sd_29.reservation.dto.ReservationRequest;
 import com.example.datn_sd_29.reservation.dto.ReservationResponse;
+import com.example.datn_sd_29.reservation.dto.ReservationListResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -162,12 +163,6 @@ public class ReservationService {
     }
 
     public ReservationResponse checkInReservation(String reservationCode) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
-        }
-
         Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
                 .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));
 
@@ -297,6 +292,109 @@ public class ReservationService {
                 invoice.getReservationNote(),
                 tableCodes
         );
+    }
+
+    public List<ReservationListResponse> findReservationsByPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            throw new IllegalArgumentException("Số điện thoại không được để trống");
+        }
+
+        String trimmedPhone = phoneNumber.trim();
+        List<Invoice> invoices = invoiceRepository.findReservationsByPhoneNumber(trimmedPhone);
+        
+        // Debug logging
+        System.out.println("Searching for phone: " + trimmedPhone);
+        System.out.println("Found invoices: " + invoices.size());
+        
+        return invoices.stream()
+                .map(invoice -> {
+                    List<InvoiceDiningTable> links = 
+                        invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+                    
+                    List<ReservationListResponse.TableInfo> tables = links.stream()
+                            .map(link -> new ReservationListResponse.TableInfo(
+                                    link.getDiningTable().getId(),
+                                    "MB-" + link.getDiningTable().getId(),
+                                    link.getDiningTable().getTableName(),
+                                    link.getDiningTable().getSeatingCapacity()
+                            ))
+                            .collect(Collectors.toList());
+                    
+                    Customer customer = invoice.getCustomer();
+                    return new ReservationListResponse(
+                            invoice.getId(),
+                            invoice.getReservationCode(),
+                            invoice.getReservedAt(),
+                            invoice.getGuestCount(),
+                            customer != null ? customer.getFullName() : "",
+                            customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getInvoiceStatus(),
+                            invoice.getPromotionType(),
+                            invoice.getReservationNote(),
+                            tables
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    public void cancelReservation(Integer invoiceId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đặt bàn"));
+
+        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalArgumentException("Chỉ có thể hủy đặt bàn có trạng thái RESERVED");
+        }
+
+        // Get tables before cancelling
+        List<InvoiceDiningTable> links = 
+            invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        
+        List<Integer> tableIds = links.stream()
+                .map(link -> link.getDiningTable().getId())
+                .collect(Collectors.toList());
+
+        // Cancel the reservation
+        invoice.setInvoiceStatus("CANCELLED");
+        invoiceRepository.save(invoice);
+
+        // Broadcast table status change to AVAILABLE
+        if (!tableIds.isEmpty()) {
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
+        }
+    }
+
+    public List<ReservationListResponse> findAllReservedReservations() {
+        List<Invoice> invoices = invoiceRepository.findAllReservedReservations();
+        
+        return invoices.stream()
+                .map(invoice -> {
+                    List<InvoiceDiningTable> links = 
+                        invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+                    
+                    List<ReservationListResponse.TableInfo> tables = links.stream()
+                            .map(link -> new ReservationListResponse.TableInfo(
+                                    link.getDiningTable().getId(),
+                                    "MB-" + link.getDiningTable().getId(),
+                                    link.getDiningTable().getTableName(),
+                                    link.getDiningTable().getSeatingCapacity()
+                            ))
+                            .collect(Collectors.toList());
+                    
+                    Customer customer = invoice.getCustomer();
+                    return new ReservationListResponse(
+                            invoice.getId(),
+                            invoice.getReservationCode(),
+                            invoice.getReservedAt(),
+                            invoice.getGuestCount(),
+                            customer != null ? customer.getFullName() : "",
+                            customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getInvoiceStatus(),
+                            invoice.getPromotionType(),
+                            invoice.getReservationNote(),
+                            tables
+                    );
+                })
+                .collect(Collectors.toList());
     }
 
     private ReservationResponse buildReservationResponse(

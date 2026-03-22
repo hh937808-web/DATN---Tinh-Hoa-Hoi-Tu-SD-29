@@ -48,6 +48,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setAllowedOrigins(allowedOrigins.split(","))
                 .addInterceptors(authInterceptor)
                 .withSockJS();
+        
+        // Register general WebSocket endpoint for admin dashboard
+        registry.addEndpoint("/ws")
+                .setAllowedOrigins(allowedOrigins.split(","))
+                .addInterceptors(authInterceptor)
+                .withSockJS();
     }
     
     /**

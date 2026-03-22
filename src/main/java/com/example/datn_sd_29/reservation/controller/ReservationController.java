@@ -4,11 +4,13 @@ import com.example.datn_sd_29.common.dto.ApiResponse;
 import com.example.datn_sd_29.reservation.dto.AvailableTableResponse;
 import com.example.datn_sd_29.reservation.dto.ReservationRequest;
 import com.example.datn_sd_29.reservation.dto.ReservationResponse;
+import com.example.datn_sd_29.reservation.dto.ReservationListResponse;
 import com.example.datn_sd_29.reservation.service.ReservationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -65,6 +67,28 @@ public class ReservationController {
     ) {
         reservationService.sendReservationDetailsEmail(reservationCode);
         return ResponseEntity.ok(ApiResponse.success("Đã gửi email thành công", null));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<ReservationListResponse>>> searchByPhoneNumber(
+            @RequestParam("phoneNumber") String phoneNumber
+    ) {
+        List<ReservationListResponse> reservations = reservationService.findReservationsByPhoneNumber(phoneNumber);
+        return ResponseEntity.ok(ApiResponse.success("OK", reservations));
+    }
+
+    @PostMapping("/{invoiceId}/cancel")
+    public ResponseEntity<ApiResponse<Void>> cancelReservation(
+            @PathVariable Integer invoiceId
+    ) {
+        reservationService.cancelReservation(invoiceId);
+        return ResponseEntity.ok(ApiResponse.success("Đã hủy đặt bàn thành công", null));
+    }
+
+    @GetMapping("/all")
+    public ResponseEntity<ApiResponse<List<ReservationListResponse>>> getAllReservedReservations() {
+        List<ReservationListResponse> reservations = reservationService.findAllReservedReservations();
+        return ResponseEntity.ok(ApiResponse.success("OK", reservations));
     }
 
 }

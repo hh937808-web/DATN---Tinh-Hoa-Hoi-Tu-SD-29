@@ -1,5 +1,6 @@
 package com.example.datn_sd_29.invoice.service;
 
+import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutRequest;
@@ -26,7 +27,6 @@ import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -57,7 +57,7 @@ public class PaymentService {
     private final ProductVoucherRepository productVoucherRepository;
     private final ProductComboVoucherRepository productComboVoucherRepository;
     private final DiningTableRepository diningTableRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final TableStatusBroadcastService tableStatusBroadcastService;
 
     @Transactional(readOnly = true)
     public PaymentDetailResponse getPaymentByTable(Integer tableId) {
@@ -149,6 +149,121 @@ public class PaymentService {
 
         response.setVouchers(loadAvailableVouchers(customer));
         return response;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentDetailResponse> getAllInProgressInvoices() {
+        List<Invoice> invoices = invoiceRepository.findByInvoiceStatus(STATUS_IN_PROGRESS);
+        System.out.println("DEBUG: Found " + invoices.size() + " invoices with status IN_PROGRESS");
+        for (Invoice inv : invoices) {
+            System.out.println("  - Invoice ID: " + inv.getId() + ", Code: " + inv.getInvoiceCode() + ", Status: " + inv.getInvoiceStatus());
+        }
+        List<PaymentDetailResponse> responses = new ArrayList<>();
+
+        for (Invoice invoice : invoices) {
+            List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+            List<InvoiceDiningTable> tableLinks =
+                    invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+
+            PaymentDetailResponse response = new PaymentDetailResponse();
+            response.setInvoiceId(invoice.getId());
+            response.setInvoiceCode(invoice.getInvoiceCode());
+            response.setInvoiceStatus(invoice.getInvoiceStatus());
+            response.setReservedAt(invoice.getReservedAt());
+            response.setCheckedInAt(invoice.getCheckedInAt());
+            response.setGuestCount(invoice.getGuestCount());
+
+            Customer customer = invoice.getCustomer();
+            if (customer == null) {
+                response.setCustomerType("GUEST");
+                response.setCustomerName("Khách lẻ");
+                response.setCustomerPhone("");
+                response.setLoyaltyPoints(0);
+            } else {
+                response.setCustomerType("MEMBER");
+                response.setCustomerName(customer.getFullName());
+                response.setCustomerPhone(customer.getPhoneNumber());
+                response.setLoyaltyPoints(customer.getLoyaltyPoints() == null ? 0 : customer.getLoyaltyPoints());
+            }
+
+            if (invoice.getEmployee() != null) {
+                response.setStaffName(invoice.getEmployee().getFullName());
+            } else {
+                response.setStaffName("Chưa phân công");
+            }
+
+            List<PaymentDetailResponse.TableSummary> tables = new ArrayList<>();
+            for (InvoiceDiningTable link : tableLinks) {
+                PaymentDetailResponse.TableSummary t = new PaymentDetailResponse.TableSummary();
+                t.setId(link.getDiningTable().getId());
+                t.setTableName(link.getDiningTable().getTableName());
+                t.setSeatingCapacity(link.getDiningTable().getSeatingCapacity());
+                tables.add(t);
+            }
+            response.setTables(tables);
+
+            List<PaymentItemResponse> itemResponses = new ArrayList<>();
+            BigDecimal subtotal = BigDecimal.ZERO;
+            for (InvoiceItem item : items) {
+                PaymentItemResponse i = new PaymentItemResponse();
+                i.setId(item.getId());
+                i.setQuantity(item.getQuantity());
+                i.setUnitPrice(item.getUnitPrice());
+                i.setDiscount(BigDecimal.ZERO);
+                if (item.getProduct() != null) {
+                    i.setName(item.getProduct().getProductName());
+                    i.setType("PRODUCT");
+                    i.setProductId(item.getProduct().getId());
+                } else if (item.getProductCombo() != null) {
+                    i.setName(item.getProductCombo().getComboName());
+                    i.setType("COMBO");
+                    i.setComboId(item.getProductCombo().getId());
+                } else {
+                    i.setName("Unknown");
+                    i.setType(item.getItemType());
+                }
+                BigDecimal lineTotal = item.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(item.getQuantity()))
+                        .subtract(i.getDiscount());
+                i.setLineTotal(lineTotal);
+                subtotal = subtotal.add(lineTotal);
+                itemResponses.add(i);
+            }
+
+            response.setItems(itemResponses);
+            response.setSubtotal(subtotal);
+            response.setItemVoucherDiscount(BigDecimal.ZERO);
+            response.setManualDiscountPercent(invoice.getManualDiscountPercent());
+            response.setManualDiscountAmount(invoice.getManualDiscountAmount());
+            response.setTaxPercent(invoice.getTaxPercent());
+            response.setServiceFeePercent(invoice.getServiceFeePercent());
+            response.setPointValue(POINT_VALUE.intValue());
+            response.setVouchers(loadAvailableVouchers(customer));
+
+            responses.add(response);
+        }
+
+        return responses;
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> debugAllInvoices() {
+        List<Invoice> allInvoices = invoiceRepository.findAll();
+        List<String> debug = new ArrayList<>();
+        debug.add("Total invoices: " + allInvoices.size());
+        
+        for (Invoice inv : allInvoices) {
+            List<InvoiceDiningTable> tables = invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
+            String tableInfo = tables.stream()
+                .map(t -> "Table#" + t.getDiningTable().getId() + "(" + t.getDiningTable().getTableName() + ")")
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("No tables");
+            
+            debug.add(String.format("Invoice ID=%d, Code=%s, Status=%s, Tables=[%s]", 
+                inv.getId(), inv.getInvoiceCode(), inv.getInvoiceStatus(), tableInfo));
+        }
+        
+        return debug;
     }
 
     @Transactional
@@ -463,7 +578,7 @@ public class PaymentService {
             diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
             
             // Broadcast table status change via WebSocket (Requirement 4.1)
-            broadcastTableStatusChange(tableIds, "AVAILABLE");
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
         }
 
         if (paymentLines != null && !paymentLines.isEmpty()) {
@@ -596,7 +711,7 @@ public class PaymentService {
             diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
             
             // Broadcast table status change via WebSocket (Requirement 4.2)
-            broadcastTableStatusChange(tableIds, "AVAILABLE");
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
         }
     }
 
@@ -736,24 +851,5 @@ public class PaymentService {
         }
         
         return result;
-    }
-    
-    /**
-     * Broadcasts table status change to all connected clients via WebSocket
-     * @param tableIds List of table IDs that changed status
-     * @param newStatus The new status of the tables
-     */
-    private void broadcastTableStatusChange(List<Integer> tableIds, String newStatus) {
-        try {
-            var message = new java.util.HashMap<String, Object>();
-            message.put("tableIds", tableIds);
-            message.put("status", newStatus);
-            message.put("timestamp", Instant.now().toString());
-            
-            messagingTemplate.convertAndSend("/topic/table-status", message);
-        } catch (Exception e) {
-            // Log error but don't fail the transaction
-            System.err.println("Failed to broadcast table status change: " + e.getMessage());
-        }
     }
 }

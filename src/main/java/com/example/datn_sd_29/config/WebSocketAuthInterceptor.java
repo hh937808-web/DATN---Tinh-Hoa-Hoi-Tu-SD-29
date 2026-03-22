@@ -50,8 +50,8 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             String email = jwtService.extractSubject(token);
             String role = jwtService.extractRole(token);
 
-            // Verify user has STAFF or RECEPTION role
-            if (!"STAFF".equals(role) && !"RECEPTION".equals(role)) {
+            // Verify user has STAFF, RECEPTION, or ADMIN role
+            if (!"STAFF".equals(role) && !"RECEPTION".equals(role) && !"ADMIN".equals(role)) {
                 log.warn("WebSocket handshake rejected: User {} with role {} is not authorized", email, role);
                 return false;
             }
