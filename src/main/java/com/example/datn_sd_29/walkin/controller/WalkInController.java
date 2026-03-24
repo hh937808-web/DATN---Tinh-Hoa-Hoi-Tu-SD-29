@@ -21,4 +21,10 @@ public class WalkInController {
         WalkInCheckInResponse response = walkInService.checkInWalkIn(request);
         return ResponseEntity.ok(ApiResponse.success("Check-in thành công", response));
     }
+
+    @PostMapping("/cancel/{invoiceCode}")
+    public ResponseEntity<ApiResponse<Void>> cancelTable(@PathVariable String invoiceCode) {
+        walkInService.cancelTable(invoiceCode);
+        return ResponseEntity.ok(ApiResponse.success("Đã hủy bàn thành công", null));
+    }
 }

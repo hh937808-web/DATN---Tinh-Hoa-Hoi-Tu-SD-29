@@ -17,6 +17,8 @@ import java.util.Optional;
 public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
 
     Optional<Invoice> findByReservationCode(String reservationCode);
+    
+    Optional<Invoice> findByInvoiceCode(String invoiceCode);
 
     @Query("SELECT COALESCE(SUM(i.finalAmount), 0) FROM Invoice i " +
            "WHERE i.paidAt >= :startDate AND i.paidAt < :endDate AND i.invoiceStatus = 'PAID'")

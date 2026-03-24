@@ -16,4 +16,5 @@ public class TableStatusResponse {
     private String status;
     private Long minutesSinceCheckIn; // For OCCUPIED/OVERTIME tables
     private Instant reservedAt; // For RESERVED tables
+    private String customerName; // Customer name for OCCUPIED/RESERVED tables
 }

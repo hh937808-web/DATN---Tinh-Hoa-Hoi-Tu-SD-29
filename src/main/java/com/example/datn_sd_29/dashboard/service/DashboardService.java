@@ -312,10 +312,16 @@ public class DashboardService {
                 String status = "AVAILABLE";
                 Long minutesSinceCheckIn = null;
                 Instant reservedAt = null;
+                String customerName = null;
                 
                 // Check if table has an active invoice
                 Invoice invoice = tableToInvoiceMap.get(table.getId());
                 if (invoice != null) {
+                    // Get customer name if available
+                    if (invoice.getCustomer() != null) {
+                        customerName = invoice.getCustomer().getFullName();
+                    }
+                    
                     if ("IN_PROGRESS".equals(invoice.getInvoiceStatus())) {
                         // Check if invoice has been in progress for more than 90 minutes
                         if (invoice.getCheckedInAt() != null) {
@@ -357,7 +363,8 @@ public class DashboardService {
                     table.getSeatingCapacity(),
                     status,
                     minutesSinceCheckIn,
-                    reservedAt
+                    reservedAt,
+                    customerName
                 );
             })
             .collect(Collectors.toList());
@@ -733,5 +740,97 @@ public class DashboardService {
             .collect(Collectors.toList());
         
         return new InvoicePageResponse(content, totalElements, totalPages, page, size);
+    }
+
+    public com.example.datn_sd_29.invoice.dto.PaymentDetailResponse getInvoiceDetail(Integer invoiceId) {
+        // Find invoice
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+            .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
+        
+        // Get invoice items
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoiceId);
+        
+        // Get tables
+        List<InvoiceDiningTable> invoiceTables = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoiceId);
+        
+        // Build response
+        com.example.datn_sd_29.invoice.dto.PaymentDetailResponse response = 
+            new com.example.datn_sd_29.invoice.dto.PaymentDetailResponse();
+        
+        response.setInvoiceId(invoice.getId());
+        response.setInvoiceCode(invoice.getInvoiceCode());
+        response.setInvoiceStatus(invoice.getInvoiceStatus());
+        response.setGuestCount(invoice.getGuestCount());
+        response.setCheckedInAt(invoice.getCheckedInAt());
+        response.setReservedAt(invoice.getReservedAt());
+        response.setSubtotal(invoice.getSubtotalAmount());
+        response.setManualDiscountPercent(invoice.getManualDiscountPercent());
+        response.setManualDiscountAmount(invoice.getManualDiscountAmount());
+        response.setTaxPercent(invoice.getTaxPercent());
+        response.setServiceFeePercent(invoice.getServiceFeePercent());
+        
+        // Customer info
+        if (invoice.getCustomer() != null) {
+            response.setCustomerType(invoice.getCustomer().getIsActive() ? "MEMBER" : "GUEST");
+            response.setCustomerName(invoice.getCustomer().getFullName());
+            response.setCustomerPhone(invoice.getCustomer().getPhoneNumber());
+            response.setLoyaltyPoints(invoice.getCustomer().getLoyaltyPoints());
+        }
+        
+        // Staff info
+        if (invoice.getEmployee() != null) {
+            response.setStaffName(invoice.getEmployee().getFullName());
+        }
+        
+        // Tables
+        List<com.example.datn_sd_29.invoice.dto.PaymentDetailResponse.TableSummary> tableSummaries = 
+            invoiceTables.stream()
+                .filter(idt -> idt.getDiningTable() != null)
+                .map(idt -> {
+                    com.example.datn_sd_29.invoice.dto.PaymentDetailResponse.TableSummary summary = 
+                        new com.example.datn_sd_29.invoice.dto.PaymentDetailResponse.TableSummary();
+                    summary.setId(idt.getDiningTable().getId());
+                    summary.setTableName(idt.getDiningTable().getTableName());
+                    summary.setSeatingCapacity(idt.getDiningTable().getSeatingCapacity());
+                    return summary;
+                })
+                .collect(Collectors.toList());
+        response.setTables(tableSummaries);
+        
+        // Items
+        List<com.example.datn_sd_29.invoice.dto.PaymentItemResponse> itemResponses = 
+            items.stream()
+                .map(item -> {
+                    com.example.datn_sd_29.invoice.dto.PaymentItemResponse itemResponse = 
+                        new com.example.datn_sd_29.invoice.dto.PaymentItemResponse();
+                    itemResponse.setId(item.getId());
+                    
+                    // Check if it's a product or combo
+                    if (item.getProduct() != null) {
+                        itemResponse.setProductId(item.getProduct().getId());
+                        itemResponse.setName(item.getProduct().getProductName());
+                        itemResponse.setType("PRODUCT");
+                    } else if (item.getProductCombo() != null) {
+                        itemResponse.setComboId(item.getProductCombo().getId());
+                        itemResponse.setName(item.getProductCombo().getComboName());
+                        itemResponse.setType("COMBO");
+                    } else {
+                        itemResponse.setName("N/A");
+                        itemResponse.setType("UNKNOWN");
+                    }
+                    
+                    itemResponse.setQuantity(item.getQuantity());
+                    itemResponse.setUnitPrice(item.getUnitPrice());
+                    itemResponse.setDiscount(BigDecimal.ZERO);
+                    itemResponse.setLineTotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+                    return itemResponse;
+                })
+                .collect(Collectors.toList());
+        response.setItems(itemResponses);
+        
+        // Vouchers (empty for now)
+        response.setVouchers(new ArrayList<>());
+        
+        return response;
     }
 }

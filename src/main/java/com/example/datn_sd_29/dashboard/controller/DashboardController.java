@@ -154,4 +154,19 @@ public class DashboardController {
             );
         }
     }
+
+    @GetMapping("/invoice-detail/{invoiceId}")
+    public ResponseEntity<ApiResponse<com.example.datn_sd_29.invoice.dto.PaymentDetailResponse>> getInvoiceDetail(
+            @PathVariable Integer invoiceId
+    ) {
+        try {
+            com.example.datn_sd_29.invoice.dto.PaymentDetailResponse detail = dashboardService.getInvoiceDetail(invoiceId);
+            return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết hóa đơn thành công", detail));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(
+                ApiResponse.error("Lỗi: " + e.getMessage(), null)
+            );
+        }
+    }
 }

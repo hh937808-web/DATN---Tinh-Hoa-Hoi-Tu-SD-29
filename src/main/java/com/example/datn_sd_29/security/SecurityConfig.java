@@ -42,6 +42,7 @@ public class SecurityConfig {
                                 "/api/reservation/*/cancel", // Cancel reservation
                                 "/api/reservation/*/check-in", // Check-in reservation
                                 "/api/reception/payment/**", // Payment endpoints
+                                "/api/walk-in/**",        // Walk-in check-in and cancel endpoints
                                 "/public/**",             // Direct public access
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
                                 "/error"                  // Error page

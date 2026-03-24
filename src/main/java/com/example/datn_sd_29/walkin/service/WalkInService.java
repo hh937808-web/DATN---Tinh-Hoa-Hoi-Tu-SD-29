@@ -1,6 +1,8 @@
 package com.example.datn_sd_29.walkin.service;
 
 import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
+import com.example.datn_sd_29.customer.entity.Customer;
+import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import com.example.datn_sd_29.employee.entity.Employee;
@@ -30,6 +32,7 @@ public class WalkInService {
     private final DiningTableRepository diningTableRepository;
     private final InvoiceDiningTableRepository invoiceDiningTableRepository;
     private final EmployeeRepository employeeRepository;
+    private final CustomerRepository customerRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
 
     @Transactional
@@ -62,6 +65,18 @@ public class WalkInService {
             throw new IllegalArgumentException("Một số bàn không tồn tại");
         }
 
+        // Validate capacity: guest count must not exceed total table capacity
+        int totalCapacity = tables.stream()
+                .mapToInt(DiningTable::getSeatingCapacity)
+                .sum();
+        
+        if (request.getGuestCount() > totalCapacity) {
+            throw new IllegalArgumentException(
+                String.format("Số khách (%d) vượt quá sức chứa của bàn (tối đa %d chỗ)", 
+                    request.getGuestCount(), totalCapacity)
+            );
+        }
+
         // Cancel any existing IN_PROGRESS invoices for these tables
         for (DiningTable table : tables) {
             final Integer tableId = table.getId();
@@ -92,6 +107,17 @@ public class WalkInService {
         invoice.setCheckedInAt(Instant.now());
         invoice.setGuestCount(request.getGuestCount());
         
+        // Create temporary customer if customer name is provided
+        if (request.getCustomerName() != null && !request.getCustomerName().trim().isEmpty()) {
+            Customer customer = new Customer();
+            customer.setFullName(request.getCustomerName().trim());
+            customer.setCreatedAt(Instant.now());
+            customer.setIsActive(true);
+            customer.setLoyaltyPoints(0);
+            customer = customerRepository.save(customer);
+            invoice.setCustomer(customer);
+        }
+        
         invoice = invoiceRepository.save(invoice);
 
         // Link tables to invoice
@@ -117,5 +143,33 @@ public class WalkInService {
             invoice.getInvoiceCode(),
             "Check-in thành công"
         );
+    }
+
+    @Transactional
+    public void cancelTable(String invoiceCode) {
+        // Find invoice by code
+        Invoice invoice = invoiceRepository.findByInvoiceCode(invoiceCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy hóa đơn"));
+
+        // Only allow cancelling IN_PROGRESS invoices
+        if (!"IN_PROGRESS".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalArgumentException("Chỉ có thể hủy hóa đơn đang phục vụ");
+        }
+
+        // Get all tables linked to this invoice
+        List<InvoiceDiningTable> invoiceTables = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        List<Integer> tableIds = invoiceTables.stream()
+                .map(idt -> idt.getDiningTable().getId())
+                .collect(Collectors.toList());
+
+        // Cancel invoice
+        invoice.setInvoiceStatus("CANCELLED");
+        invoiceRepository.save(invoice);
+
+        // Set tables back to AVAILABLE
+        if (!tableIds.isEmpty()) {
+            diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
+        }
     }
 }

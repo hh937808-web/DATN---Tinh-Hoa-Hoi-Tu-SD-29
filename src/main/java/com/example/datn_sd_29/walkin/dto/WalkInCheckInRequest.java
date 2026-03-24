@@ -10,4 +10,5 @@ import java.util.List;
 public class WalkInCheckInRequest {
     private List<Integer> tableIds;
     private Integer guestCount;
+    private String customerName; // Optional customer name for walk-in
 }

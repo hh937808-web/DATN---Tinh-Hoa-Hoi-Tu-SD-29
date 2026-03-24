@@ -7,7 +7,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class OrderItemRequest {
+public class    OrderItemRequest {
     @NotBlank
     private String itemType; // PRODUCT | COMBO
 
