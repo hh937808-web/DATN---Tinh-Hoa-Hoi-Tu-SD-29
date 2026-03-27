@@ -2,6 +2,7 @@ package com.example.datn_sd_29.invoice.repository;
 
 import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
+import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -35,4 +36,15 @@ public interface InvoiceItemRepository extends JpaRepository<InvoiceItem, Intege
     List<Object[]> findTopProductsByDateRangeRaw(@Param("startDate") LocalDateTime startDate,
                                                  @Param("endDate") LocalDateTime endDate,
                                                  org.springframework.data.domain.Pageable pageable);
+
+    // ===== KITCHEN =====
+    @Query("""
+        select ii
+        from InvoiceItem ii
+        left join fetch ii.product p
+        left join fetch ii.productCombo pc
+        left join fetch ii.diningTable dt
+        where ii.status in :statuses
+    """)
+    List<InvoiceItem> findKitchenItems(@Param("statuses") List<InvoiceItemStatus> statuses);
 }

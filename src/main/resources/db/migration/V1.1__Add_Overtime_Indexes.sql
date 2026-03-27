@@ -18,3 +18,4 @@ WHERE invoice_status = 'RESERVED';
 -- Optimizes joins between invoice and dining_table via invoice_dining_table
 CREATE NONCLUSTERED INDEX idx_invoice_dining_table_lookup 
 ON invoice_dining_table(invoice_id, dining_table_id);
+

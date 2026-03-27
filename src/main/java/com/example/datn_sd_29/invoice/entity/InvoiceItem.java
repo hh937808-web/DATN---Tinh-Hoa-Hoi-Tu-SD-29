@@ -1,15 +1,9 @@
 package com.example.datn_sd_29.invoice.entity;
 
+import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.product.entity.Product;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -52,4 +46,11 @@ public class InvoiceItem {
     @Column(name = "line_total", insertable = false, updatable = false, precision = 29, scale = 2)
     private BigDecimal lineTotal;
 
+    @Column(name = "status")
+    @Enumerated(EnumType.STRING)
+    private InvoiceItemStatus status = InvoiceItemStatus.ORDERED;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dining_table_id")
+    private DiningTable diningTable;
 }

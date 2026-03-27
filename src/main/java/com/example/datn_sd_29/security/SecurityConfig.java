@@ -45,7 +45,8 @@ public class SecurityConfig {
                                 "/api/walk-in/**",        // Walk-in check-in and cancel endpoints
                                 "/public/**",             // Direct public access
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
-                                "/error"                  // Error page
+                                "/error",                  // Error page
+                                "/api/kitchen/**"           // Update status product/combo
                         ).permitAll()
                         // Public GET endpoints cho khách hàng
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()

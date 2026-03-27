@@ -1,8 +1,11 @@
 package com.example.datn_sd_29.invoice.service;
 
+import com.example.datn_sd_29.dining_table.entity.DiningTable;
+import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import com.example.datn_sd_29.invoice.dto.OrderItemRequest;
 import com.example.datn_sd_29.invoice.entity.Invoice;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
+import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceItemRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
@@ -30,12 +33,18 @@ public class StaffOrderService {
     private final InvoiceRepository invoiceRepository;
     private final ProductRepository productRepository;
     private final ProductComboRepository productComboRepository;
+    private final DiningTableRepository diningTableRepository;
 
     @Transactional
     public void addItemsToTable(Integer tableId, List<OrderItemRequest> items) {
         if (tableId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Table id is required");
         }
+        DiningTable diningTable = diningTableRepository.findById(tableId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Dining table not found"
+                ));
         if (items == null || items.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Items is required");
         }
@@ -60,6 +69,8 @@ public class StaffOrderService {
             invoiceItem.setInvoice(invoice);
             invoiceItem.setItemType(type);
             invoiceItem.setQuantity(item.getQuantity());
+            invoiceItem.setDiningTable(diningTable);
+            invoiceItem.setStatus(InvoiceItemStatus.ORDERED);
 
             if ("PRODUCT".equals(type)) {
                 if (item.getProductId() == null) {
