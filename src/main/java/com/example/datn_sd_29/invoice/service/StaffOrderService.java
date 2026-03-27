@@ -40,12 +40,7 @@ public class StaffOrderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Items is required");
         }
 
-        Invoice invoice = invoiceDiningTableRepository
-                .findInvoiceByTableAndStatus(tableId, STATUS_IN_PROGRESS)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "No active invoice for this table"
-                ));
+        Invoice invoice = getSingleInProgressInvoice(tableId);
 
         List<InvoiceItem> toSave = new ArrayList<>();
         BigDecimal addedSubtotal = BigDecimal.ZERO;
@@ -99,5 +94,33 @@ public class StaffOrderService {
                 : invoice.getSubtotalAmount();
         invoice.setSubtotalAmount(currentSubtotal.add(addedSubtotal));
         invoiceRepository.save(invoice);
+    }
+
+    /**
+     * Safely get single IN_PROGRESS invoice for a table.
+     * Throws CONFLICT error if multiple invoices found (merged table issue).
+     * Throws NOT_FOUND if no invoice found.
+     */
+    private Invoice getSingleInProgressInvoice(Integer tableId) {
+        if (tableId == null || tableId < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Table id is invalid");
+        }
+
+        List<Invoice> invoices = invoiceDiningTableRepository.findDistinctInvoicesByTableAndStatuses(
+                tableId,
+                List.of(STATUS_IN_PROGRESS)
+        );
+
+        if (invoices.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                    "No active invoice for table #" + tableId);
+        }
+        
+        if (invoices.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                    "Table #" + tableId + " is attached to multiple active invoices. Please resolve the conflict.");
+        }
+        
+        return invoices.get(0);
     }
 }

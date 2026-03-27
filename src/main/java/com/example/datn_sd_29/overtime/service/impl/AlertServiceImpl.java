@@ -95,13 +95,14 @@ public class AlertServiceImpl implements AlertService {
     
     /**
      * Calculates urgency based on next reservation proximity.
-     * CRITICAL: < 30 minutes
-     * HIGH: < 60 minutes
-     * MEDIUM: < 120 minutes
+     * CRITICAL: < 30 minutes - Immediate action required
+     * HIGH: < 60 minutes - Action needed soon
+     * MEDIUM: < 120 minutes - Monitor closely
+     * LOW: No next reservation or > 120 minutes - Informational only
      */
     private AlertUrgency calculateUrgency(LocalDateTime nextReservationTime) {
         if (nextReservationTime == null) {
-            return AlertUrgency.MEDIUM;
+            return AlertUrgency.LOW; // No next reservation
         }
         
         Instant nextReservationInstant = nextReservationTime.atZone(ZoneId.systemDefault()).toInstant();
@@ -111,8 +112,10 @@ public class AlertServiceImpl implements AlertService {
             return AlertUrgency.CRITICAL;
         } else if (minutesUntilReservation < 60) {
             return AlertUrgency.HIGH;
-        } else {
+        } else if (minutesUntilReservation < 120) {
             return AlertUrgency.MEDIUM;
+        } else {
+            return AlertUrgency.LOW; // > 120 minutes
         }
     }
     

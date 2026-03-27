@@ -2,6 +2,7 @@ package com.example.datn_sd_29.invoice.service;
 
 import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
+import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutResponse;
@@ -26,6 +27,7 @@ import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,7 +48,7 @@ public class PaymentService {
     private static final String STATUS_PAID = "PAID";
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final BigDecimal POINT_VALUE = BigDecimal.valueOf(1000);
-    private static final BigDecimal EARN_POINT_DIVISOR = BigDecimal.valueOf(10000);
+    private static final BigDecimal EARN_POINT_RATE = BigDecimal.valueOf(0.02); // 2% cashback
 
     private final InvoiceDiningTableRepository invoiceDiningTableRepository;
     private final InvoiceItemRepository invoiceItemRepository;
@@ -58,13 +61,19 @@ public class PaymentService {
     private final ProductComboVoucherRepository productComboVoucherRepository;
     private final DiningTableRepository diningTableRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    
+    @Value("${payment.vat.percent:10}")
+    private BigDecimal vatPercent;
+    
+    @Value("${payment.service-fee.percent:5}")
+    private BigDecimal serviceFeePercent;
+    
+    @Value("${payment.points.max-usage-percent:40}")
+    private BigDecimal maxPointsUsagePercent;
 
     @Transactional(readOnly = true)
     public PaymentDetailResponse getPaymentByTable(Integer tableId) {
-        Invoice invoice = invoiceDiningTableRepository
-                .findInvoiceByTableAndStatus(tableId, STATUS_IN_PROGRESS)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No active invoice for this table"));
+        Invoice invoice = getSingleInProgressInvoice(tableId);
 
         List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
         List<InvoiceDiningTable> tableLinks =
@@ -123,9 +132,6 @@ public class PaymentService {
                 i.setName(item.getProductCombo().getComboName());
                 i.setType("COMBO");
                 i.setComboId(item.getProductCombo().getId());
-            } else if (item.getProductCombo() != null) {
-                i.setName(item.getProductCombo().getComboName());
-                i.setType("COMBO");
             } else {
                 i.setName("Unknown");
                 i.setType(item.getItemType());
@@ -141,10 +147,8 @@ public class PaymentService {
         response.setItems(itemResponses);
         response.setSubtotal(subtotal);
         response.setItemVoucherDiscount(BigDecimal.ZERO);
-        response.setManualDiscountPercent(invoice.getManualDiscountPercent());
-        response.setManualDiscountAmount(invoice.getManualDiscountAmount());
-        response.setTaxPercent(invoice.getTaxPercent());
-        response.setServiceFeePercent(invoice.getServiceFeePercent());
+        response.setVatPercent(vatPercent);
+        response.setServiceFeePercent(serviceFeePercent);
         response.setPointValue(POINT_VALUE.intValue());
 
         response.setVouchers(loadAvailableVouchers(customer));
@@ -154,10 +158,6 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public List<PaymentDetailResponse> getAllInProgressInvoices() {
         List<Invoice> invoices = invoiceRepository.findByInvoiceStatus(STATUS_IN_PROGRESS);
-        System.out.println("DEBUG: Found " + invoices.size() + " invoices with status IN_PROGRESS");
-        for (Invoice inv : invoices) {
-            System.out.println("  - Invoice ID: " + inv.getId() + ", Code: " + inv.getInvoiceCode() + ", Status: " + inv.getInvoiceStatus());
-        }
         List<PaymentDetailResponse> responses = new ArrayList<>();
 
         for (Invoice invoice : invoices) {
@@ -233,10 +233,8 @@ public class PaymentService {
             response.setItems(itemResponses);
             response.setSubtotal(subtotal);
             response.setItemVoucherDiscount(BigDecimal.ZERO);
-            response.setManualDiscountPercent(invoice.getManualDiscountPercent());
-            response.setManualDiscountAmount(invoice.getManualDiscountAmount());
-            response.setTaxPercent(invoice.getTaxPercent());
-            response.setServiceFeePercent(invoice.getServiceFeePercent());
+            response.setVatPercent(vatPercent);
+            response.setServiceFeePercent(serviceFeePercent);
             response.setPointValue(POINT_VALUE.intValue());
             response.setVouchers(loadAvailableVouchers(customer));
 
@@ -268,16 +266,20 @@ public class PaymentService {
 
     @Transactional
     public PaymentCheckoutResponse checkout(PaymentCheckoutRequest request) {
-        Invoice invoice = invoiceDiningTableRepository
-                .findInvoiceByTableAndStatus(request.getTableId(), STATUS_IN_PROGRESS)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No active invoice for this table"));
+        Invoice invoice = getSingleInProgressInvoice(request.getTableId());
 
         if (STATUS_PAID.equals(invoice.getInvoiceStatus()) || STATUS_CANCELLED.equals(invoice.getInvoiceStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invoice is closed");
         }
 
         List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+        
+        // RULE: Block payment if invoice has no items
+        if (items.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot process payment: Invoice has no items");
+        }
+        
         BigDecimal subtotal = items.stream()
                 .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -412,14 +414,6 @@ public class PaymentService {
             }
         }
 
-        int usePoints = request.getUsePoints() == null ? 0 : request.getUsePoints();
-        int customerPoints = customer == null || customer.getLoyaltyPoints() == null
-                ? 0
-                : customer.getLoyaltyPoints();
-        if (usePoints > customerPoints) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not enough points");
-        }
-
         BigDecimal invoiceVoucherDiscount = BigDecimal.ZERO;
         CustomerVoucher customerVoucher = null;
         if (request.getCustomerVoucherId() != null && customer != null) {
@@ -451,44 +445,43 @@ public class PaymentService {
             baseAfterVoucher = BigDecimal.ZERO;
         }
 
-        BigDecimal manualDiscountPercent = request.getManualDiscountPercent() == null
-                ? BigDecimal.ZERO
-                : request.getManualDiscountPercent();
-        BigDecimal manualDiscountAmount = request.getManualDiscountAmount() == null
-                ? BigDecimal.ZERO
-                : request.getManualDiscountAmount();
-
-        BigDecimal manualDiscount = BigDecimal.ZERO;
-        if (manualDiscountAmount.compareTo(BigDecimal.ZERO) > 0) {
-            manualDiscount = manualDiscountAmount;
-        } else if (manualDiscountPercent.compareTo(BigDecimal.ZERO) > 0) {
-            manualDiscount = baseAfterVoucher.multiply(manualDiscountPercent)
-                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        // RULE: Limit points usage to max percentage of invoice (30-50%)
+        int usePoints = request.getUsePoints() == null ? 0 : request.getUsePoints();
+        int customerPoints = customer == null || customer.getLoyaltyPoints() == null
+                ? 0
+                : customer.getLoyaltyPoints();
+        
+        if (usePoints > customerPoints) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Not enough points. Customer has " + customerPoints + " points");
         }
-        if (manualDiscount.compareTo(baseAfterVoucher) > 0) {
-            manualDiscount = baseAfterVoucher;
+        
+        // Calculate max points allowed based on invoice amount
+        BigDecimal maxPointsValue = baseAfterVoucher
+                .multiply(maxPointsUsagePercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        int maxPointsAllowed = maxPointsValue.divide(POINT_VALUE, 0, RoundingMode.FLOOR).intValue();
+        
+        if (usePoints > maxPointsAllowed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Points usage exceeds limit. Maximum " + maxPointsAllowed + " points (" + 
+                maxPointsUsagePercent.intValue() + "% of invoice) can be used");
         }
-
-        BigDecimal baseAfterManual = baseAfterVoucher.subtract(manualDiscount);
 
         BigDecimal pointsDiscount = POINT_VALUE.multiply(BigDecimal.valueOf(usePoints));
-        if (pointsDiscount.compareTo(baseAfterManual) > 0) {
-            pointsDiscount = baseAfterManual.max(BigDecimal.ZERO);
+        if (pointsDiscount.compareTo(baseAfterVoucher) > 0) {
+            pointsDiscount = baseAfterVoucher.max(BigDecimal.ZERO);
         }
 
-        BigDecimal taxableBase = baseAfterManual.subtract(pointsDiscount);
+        BigDecimal taxableBase = baseAfterVoucher.subtract(pointsDiscount);
         if (taxableBase.compareTo(BigDecimal.ZERO) < 0) {
             taxableBase = BigDecimal.ZERO;
         }
 
-        BigDecimal taxPercent = request.getTaxPercent() == null ? BigDecimal.ZERO : request.getTaxPercent();
-        BigDecimal serviceFeePercent = request.getServiceFeePercent() == null
-                ? BigDecimal.ZERO
-                : request.getServiceFeePercent();
-
+        // SERVER-SIDE VAT and Service Fee calculation
         BigDecimal taxAmount = BigDecimal.ZERO;
-        if (taxPercent.compareTo(BigDecimal.ZERO) > 0) {
-            taxAmount = taxableBase.multiply(taxPercent)
+        if (vatPercent.compareTo(BigDecimal.ZERO) > 0) {
+            taxAmount = taxableBase.multiply(vatPercent)
                     .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
         }
 
@@ -500,7 +493,6 @@ public class PaymentService {
 
         BigDecimal totalDiscount = itemVoucherDiscount
                 .add(invoiceVoucherDiscount)
-                .add(manualDiscount)
                 .add(pointsDiscount);
         BigDecimal totalPayable = taxableBase.add(taxAmount).add(serviceFeeAmount);
 
@@ -552,9 +544,10 @@ public class PaymentService {
 
         invoice.setSubtotalAmount(subtotal);
         invoice.setDiscountAmount(totalDiscount);
-        invoice.setManualDiscountPercent(manualDiscountPercent);
-        invoice.setManualDiscountAmount(manualDiscount);
-        invoice.setTaxPercent(taxPercent);
+        // Keep manual discount fields as NULL (removed from business logic but kept for audit)
+        invoice.setManualDiscountPercent(null);
+        invoice.setManualDiscountAmount(null);
+        invoice.setTaxPercent(vatPercent);
         invoice.setTaxAmount(taxAmount);
         invoice.setServiceFeePercent(serviceFeePercent);
         invoice.setServiceFeeAmount(serviceFeeAmount);
@@ -563,7 +556,8 @@ public class PaymentService {
         invoice.setInvoiceStatus(STATUS_PAID);
         invoice.setUsedPoints(usePoints);
 
-        int earnedPoints = totalPayable.divide(EARN_POINT_DIVISOR, 0, RoundingMode.FLOOR).intValue();
+        // Earn points: 2% of total payable (floor rounding)
+        int earnedPoints = totalPayable.multiply(EARN_POINT_RATE).divide(POINT_VALUE, 0, RoundingMode.FLOOR).intValue();
         invoice.setEarnedPoints(earnedPoints);
 
         invoiceRepository.save(invoice);
@@ -651,7 +645,6 @@ public class PaymentService {
         response.setInvoiceStatus(invoice.getInvoiceStatus());
         response.setSubtotal(subtotal);
         response.setTotalDiscount(totalDiscount);
-        response.setManualDiscount(manualDiscount);
         response.setTaxAmount(taxAmount);
         response.setServiceFeeAmount(serviceFeeAmount);
         response.setTotalPayable(totalPayable);
@@ -690,10 +683,7 @@ public class PaymentService {
 
     @Transactional
     public void cancelByTable(Integer tableId) {
-        Invoice invoice = invoiceDiningTableRepository
-                .findInvoiceByTableAndStatus(tableId, STATUS_IN_PROGRESS)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No active invoice for this table"));
+        Invoice invoice = getSingleInProgressInvoice(tableId);
 
         if (STATUS_PAID.equals(invoice.getInvoiceStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invoice already paid");
@@ -713,6 +703,37 @@ public class PaymentService {
             // Broadcast table status change via WebSocket (Requirement 4.2)
             tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
         }
+    }
+
+    /**
+     * Safely get single IN_PROGRESS invoice for a table.
+     * Throws CONFLICT error if multiple invoices found (merged table issue).
+     * Throws NOT_FOUND if no invoice found.
+     */
+    private Invoice getSingleInProgressInvoice(Integer tableId) {
+        if (tableId == null || tableId < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Table id is invalid");
+        }
+
+        List<Invoice> invoices = invoiceDiningTableRepository.findDistinctInvoicesByTableAndStatuses(
+                tableId,
+                List.of(STATUS_IN_PROGRESS)
+        );
+
+        if (invoices.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                    "No active invoice for table #" + tableId);
+        }
+        
+        if (invoices.size() > 1) {
+            String invoiceCodes = invoices.stream()
+                    .map(Invoice::getInvoiceCode)
+                    .collect(Collectors.joining(", "));
+            throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                    "Table #" + tableId + " is attached to multiple active invoices: " + invoiceCodes);
+        }
+        
+        return invoices.get(0);
     }
 
     private List<PaymentVoucherResponse> loadAvailableVouchers(Customer customer) {

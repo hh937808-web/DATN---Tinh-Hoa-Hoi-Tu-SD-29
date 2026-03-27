@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.List;
 
 @Getter
 @Setter
@@ -24,14 +25,6 @@ public class PaymentCheckoutRequest {
     private String paymentMethod; // CASH | TRANSFER | EWALLET | CARD | MIXED
 
     private BigDecimal cashReceived;
-
-    // Manual discount (optional)
-    private BigDecimal manualDiscountPercent;
-    private BigDecimal manualDiscountAmount;
-
-    // VAT / Service fee (optional)
-    private BigDecimal taxPercent;
-    private BigDecimal serviceFeePercent;
 
     // Multi payment (optional). If present, will override paymentMethod/cashReceived.
     private List<PaymentLine> payments;

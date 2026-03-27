@@ -14,7 +14,6 @@ public class PaymentCheckoutResponse {
     private String invoiceStatus;
     private BigDecimal subtotal;
     private BigDecimal totalDiscount;
-    private BigDecimal manualDiscount;
     private BigDecimal taxAmount;
     private BigDecimal serviceFeeAmount;
     private BigDecimal totalPayable;

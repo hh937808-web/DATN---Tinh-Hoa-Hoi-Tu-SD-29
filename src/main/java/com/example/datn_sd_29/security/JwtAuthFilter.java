@@ -67,14 +67,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     
     /**
      * Kiểm tra xem path có phải là public endpoint không
+     * Chỉ bỏ qua authentication cho các endpoint thực sự public
+     * Các endpoint khác sẽ được xử lý bởi SecurityConfig
      */
     private boolean isPublicPath(String path) {
         return path.startsWith("/public/") ||
                path.startsWith("/api/public/") ||
                path.startsWith("/api/auth/") ||
-               path.startsWith("/api/dashboard/") ||
-               path.startsWith("/api/reservation/") ||
-               path.startsWith("/api/reception/payment/") ||
                path.startsWith("/ws/");
     }
 }

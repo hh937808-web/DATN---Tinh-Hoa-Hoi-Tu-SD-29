@@ -77,24 +77,24 @@ public class WalkInService {
             );
         }
 
-        // Cancel any existing IN_PROGRESS invoices for these tables
+        // Check for conflicts BEFORE creating new invoice - fail explicitly if table in use
         for (DiningTable table : tables) {
             final Integer tableId = table.getId();
             
-            List<Invoice> conflictingInvoices = invoiceRepository.findAll().stream()
-                    .filter(inv -> "IN_PROGRESS".equals(inv.getInvoiceStatus()))
-                    .filter(inv -> {
-                        List<InvoiceDiningTable> invTables = 
-                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
-                        return invTables.stream()
-                            .anyMatch(idt -> idt.getDiningTable() != null && 
-                                           idt.getDiningTable().getId().equals(tableId));
-                    })
-                    .collect(Collectors.toList());
+            List<Invoice> conflictingInvoices = invoiceDiningTableRepository
+                    .findDistinctInvoicesByTableAndStatuses(
+                            tableId,
+                            List.of("IN_PROGRESS", "RESERVED")
+                    );
 
-            for (Invoice conflictingInvoice : conflictingInvoices) {
-                conflictingInvoice.setInvoiceStatus("CANCELLED");
-                invoiceRepository.save(conflictingInvoice);
+            if (!conflictingInvoices.isEmpty()) {
+                Invoice conflict = conflictingInvoices.get(0);
+                throw new IllegalStateException(
+                    String.format("Bàn %s đã có hóa đơn %s (trạng thái: %s). Vui lòng chọn bàn khác hoặc hủy hóa đơn hiện tại.",
+                        table.getTableName(),
+                        conflict.getInvoiceCode(),
+                        conflict.getInvoiceStatus())
+                );
             }
         }
 

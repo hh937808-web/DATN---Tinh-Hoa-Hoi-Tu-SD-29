@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -131,7 +132,7 @@ class OvertimeDetectionServiceTest {
         
         when(invoiceRepository.findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
                 eq(tableId), eq("RESERVED"), any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(Optional.of(reservation));
+                .thenReturn(List.of(reservation));
         
         // When
         Optional<Invoice> result = overtimeDetectionService.findNextReservation(tableId, currentTime);
@@ -149,7 +150,7 @@ class OvertimeDetectionServiceTest {
         
         when(invoiceRepository.findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
                 eq(tableId), eq("RESERVED"), any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
         
         // When
         Optional<Invoice> result = overtimeDetectionService.findNextReservation(tableId, currentTime);

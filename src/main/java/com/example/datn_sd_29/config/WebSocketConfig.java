@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * WebSocket configuration for real-time overtime alerts
  * Implements STOMP protocol over WebSocket with SockJS fallback
+ * Uses STOMP CONNECT header authentication and topic-level authorization
  */
 @Slf4j
 @Configuration
@@ -24,6 +26,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    private final WebSocketChannelInterceptor channelInterceptor;
+    private final WebSocketSubscriptionInterceptor subscriptionInterceptor;
     private final WebSocketAuthInterceptor authInterceptor;
     
     // Track active WebSocket connections (Requirement 10.2)
@@ -42,8 +46,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        // Register interceptors for STOMP CONNECT authentication and SUBSCRIBE authorization
+        registration.interceptors(channelInterceptor, subscriptionInterceptor);
+    }
+
+    @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Register STOMP endpoint for overtime alerts with SockJS fallback
+        // Authentication happens at handshake level via query parameter
         registry.addEndpoint("/ws/overtime-alerts")
                 .setAllowedOrigins(allowedOrigins.split(","))
                 .addInterceptors(authInterceptor)

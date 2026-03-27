@@ -764,9 +764,7 @@ public class DashboardService {
         response.setCheckedInAt(invoice.getCheckedInAt());
         response.setReservedAt(invoice.getReservedAt());
         response.setSubtotal(invoice.getSubtotalAmount());
-        response.setManualDiscountPercent(invoice.getManualDiscountPercent());
-        response.setManualDiscountAmount(invoice.getManualDiscountAmount());
-        response.setTaxPercent(invoice.getTaxPercent());
+        response.setVatPercent(invoice.getTaxPercent());
         response.setServiceFeePercent(invoice.getServiceFeePercent());
         
         // Customer info
