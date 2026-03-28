@@ -18,6 +18,7 @@ public class ReservationListResponse {
     private String invoiceStatus;
     private String promotionType;
     private String note;
+    private String foodNote;
     private List<TableInfo> tables;
 
     @Data

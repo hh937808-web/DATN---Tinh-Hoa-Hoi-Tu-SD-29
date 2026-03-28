@@ -17,6 +17,7 @@ import com.example.datn_sd_29.reservation.dto.ReservationRequest;
 import com.example.datn_sd_29.reservation.dto.ReservationResponse;
 import com.example.datn_sd_29.reservation.dto.ReservationListResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -26,10 +27,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RequiredArgsConstructor
 @Transactional
 @Service
@@ -44,6 +47,10 @@ public class ReservationService {
 
     private static final int RESERVATION_DURATION_MINUTES = 90;
     private static final int PRE_RESERVE_BUFFER_MINUTES = 30;
+    private static final int CLEANUP_BUFFER_MINUTES = 30; // Thời gian dọn dẹp sau khi khách ăn xong
+    private static final int FUTURE_RESERVATION_CHECK_HOURS = 3; // Check future reservations within 3 hours
+    private static final int CHECK_IN_EARLY_BUFFER_MINUTES = 60; // Allow check-in up to 60 minutes early
+    private static final int CHECK_IN_LATE_BUFFER_MINUTES = 30; // Allow check-in up to 30 minutes late
     private static final int MAX_TABLES_TO_COMBINE = 5;
     private static final Set<String> ACTIVE_STATUSES = Set.of("RESERVED", "CONFIRMED", "IN_PROGRESS");
     private static final Set<String> PROMOTION_OPTIONS = Set.of(
@@ -96,10 +103,16 @@ public class ReservationService {
         }
 
         List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
-        List<DiningTable> selectedTables = selectTablesForGuests(availableTables, guestCount);
+        List<DiningTable> selectedTables = selectTablesForGuests(availableTables, guestCount, reservedAt);
         if (selectedTables.isEmpty()) {
             throw new IllegalArgumentException("Không còn bàn phù hợp trong thời gian đã chọn");
         }
+
+        // Lock tables to prevent race condition (pessimistic write lock)
+        List<Integer> tableIds = selectedTables.stream()
+                .map(DiningTable::getId)
+                .collect(Collectors.toList());
+        diningTableRepository.lockTablesForReservation(tableIds);
 
         // Validate 120-minute gap from existing reservations (Requirements 6.1, 6.2, 6.3, 6.4, 6.5)
         validateReservationGap(selectedTables, reservedAt);
@@ -131,10 +144,7 @@ public class ReservationService {
             invoiceDiningTableRepository.save(idt);
         }
 
-        // Broadcast RESERVED status via WebSocket
-        List<Integer> tableIds = selectedTables.stream()
-                .map(DiningTable::getId)
-                .collect(Collectors.toList());
+        // Broadcast RESERVED status via WebSocket (reuse tableIds from lock)
         tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
 
         List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
@@ -179,61 +189,45 @@ public class ReservationService {
                 .map(InvoiceDiningTable::getDiningTable)
                 .collect(Collectors.toList());
 
-        // IMPORTANT: Handle table conflicts
+        // Validate reserved time
+        LocalDateTime reservedAt = invoice.getReservedAt();
+        if (reservedAt == null) {
+            throw new IllegalArgumentException("Reservation has no reserved time");
+        }
+
+        // Calculate flexible time window for conflict detection
+        // Allow early check-in (up to 60 minutes before) and late check-in (up to 30 minutes after)
+        LocalDateTime windowStart = reservedAt.minusMinutes(CHECK_IN_EARLY_BUFFER_MINUTES);
+        LocalDateTime windowEnd = reservedAt.plusMinutes(RESERVATION_DURATION_MINUTES + CHECK_IN_LATE_BUFFER_MINUTES);
+
+        // Check for conflicts within time window
         final Integer currentInvoiceId = invoice.getId();
         for (DiningTable table : tables) {
             final Integer tableId = table.getId();
             
-            // 1. Cancel all existing IN_PROGRESS invoices for this table
-            List<Invoice> inProgressInvoices = invoiceRepository.findAll().stream()
-                    .filter(inv -> "IN_PROGRESS".equals(inv.getInvoiceStatus()))
-                    .filter(inv -> !inv.getId().equals(currentInvoiceId))
-                    .filter(inv -> {
-                        List<InvoiceDiningTable> invTables = 
-                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
-                        return invTables.stream()
-                            .anyMatch(idt -> idt.getDiningTable() != null && 
-                                           idt.getDiningTable().getId().equals(tableId));
-                    })
-                    .collect(Collectors.toList());
-
-            for (Invoice existingInvoice : inProgressInvoices) {
-                existingInvoice.setInvoiceStatus("CANCELLED");
-                invoiceRepository.save(existingInvoice);
-            }
+            // Use time-window aware conflict detection
+            List<Invoice> conflictingInvoices = invoiceDiningTableRepository
+                    .findConflictingInvoicesByTableWithinWindow(
+                            tableId,
+                            List.of("IN_PROGRESS", "RESERVED"),
+                            windowStart,
+                            windowEnd,
+                            RESERVATION_DURATION_MINUTES
+                    );
             
-            // 2. Remove this table from all other RESERVED invoices
-            List<Invoice> reservedInvoices = invoiceRepository.findAll().stream()
-                    .filter(inv -> "RESERVED".equals(inv.getInvoiceStatus()))
+            // Filter out current invoice
+            conflictingInvoices = conflictingInvoices.stream()
                     .filter(inv -> !inv.getId().equals(currentInvoiceId))
-                    .filter(inv -> {
-                        List<InvoiceDiningTable> invTables = 
-                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
-                        return invTables.stream()
-                            .anyMatch(idt -> idt.getDiningTable() != null && 
-                                           idt.getDiningTable().getId().equals(tableId));
-                    })
                     .collect(Collectors.toList());
-
-            for (Invoice reservedInvoice : reservedInvoices) {
-                // Remove this table from the reserved invoice
-                List<InvoiceDiningTable> reservedTables = 
-                    invoiceDiningTableRepository.findByInvoiceIdWithTable(reservedInvoice.getId());
-                
-                for (InvoiceDiningTable idt : reservedTables) {
-                    if (idt.getDiningTable() != null && 
-                        idt.getDiningTable().getId().equals(tableId)) {
-                        invoiceDiningTableRepository.delete(idt);
-                    }
-                }
-                
-                // If the reserved invoice has no tables left, cancel it
-                List<InvoiceDiningTable> remainingTables = 
-                    invoiceDiningTableRepository.findByInvoiceIdWithTable(reservedInvoice.getId());
-                if (remainingTables.isEmpty()) {
-                    reservedInvoice.setInvoiceStatus("CANCELLED");
-                    invoiceRepository.save(reservedInvoice);
-                }
+            
+            if (!conflictingInvoices.isEmpty()) {
+                Invoice conflict = conflictingInvoices.get(0);
+                throw new IllegalStateException(
+                    String.format("Bàn %s đã có hóa đơn %s (trạng thái: %s) trong khoảng thời gian xung đột. Vui lòng chọn bàn khác hoặc hủy hóa đơn xung đột.",
+                        table.getTableName(),
+                        conflict.getInvoiceCode(),
+                        conflict.getInvoiceStatus())
+                );
             }
         }
 
@@ -302,10 +296,6 @@ public class ReservationService {
         String trimmedPhone = phoneNumber.trim();
         List<Invoice> invoices = invoiceRepository.findReservationsByPhoneNumber(trimmedPhone);
         
-        // Debug logging
-        System.out.println("Searching for phone: " + trimmedPhone);
-        System.out.println("Found invoices: " + invoices.size());
-        
         return invoices.stream()
                 .map(invoice -> {
                     List<InvoiceDiningTable> links = 
@@ -331,6 +321,7 @@ public class ReservationService {
                             invoice.getInvoiceStatus(),
                             invoice.getPromotionType(),
                             invoice.getReservationNote(),
+                            invoice.getFoodNote(),
                             tables
                     );
                 })
@@ -391,6 +382,7 @@ public class ReservationService {
                             invoice.getInvoiceStatus(),
                             invoice.getPromotionType(),
                             invoice.getReservationNote(),
+                            invoice.getFoodNote(),
                             tables
                     );
                 })
@@ -446,25 +438,101 @@ public class ReservationService {
 
         return candidates.stream()
                 .filter(this::isTableServiceable)
+                // Filter 1: No overlapping reservations in the booking window
                 .filter(table -> !invoiceDiningTableRepository.existsOverlappingReservation(
                         table.getId(), ACTIVE_STATUSES, windowStart, windowEnd, RESERVATION_DURATION_MINUTES))
+                // Filter 2: No future reservations soon (prevents walk-in conflicts)
+                .filter(table -> !hasFutureReservationSoon(table.getId(), reservedAt))
                 .collect(Collectors.toList());
     }
 
-    private List<DiningTable> selectTablesForGuests(List<DiningTable> tables, int guestCount) {
+    /**
+     * Selects tables for guests with smart prioritization:
+     * - Prioritizes "fresh" tables (no recent reservations within 120 minutes before)
+     * - Only uses "recently used" tables when no fresh tables available
+     * This mimics real staff behavior and maximizes overtime alert effectiveness
+     */
+    private List<DiningTable> selectTablesForGuests(List<DiningTable> tables, int guestCount, LocalDateTime reservedAt) {
+        if (tables.isEmpty()) {
+            return List.of();
+        }
+
+        // Classify tables by priority
+        List<DiningTable> freshTables = new ArrayList<>();
+        List<DiningTable> recentlyUsedTables = new ArrayList<>();
+        
+        for (DiningTable table : tables) {
+            if (hasRecentReservation(table.getId(), reservedAt)) {
+                recentlyUsedTables.add(table);
+            } else {
+                freshTables.add(table);
+            }
+        }
+        
+        // Try to select from fresh tables first (highest priority)
+        List<DiningTable> selected = trySelectFromTables(freshTables, guestCount);
+        if (!selected.isEmpty()) {
+            return selected;
+        }
+        
+        // Only use recently used tables when no fresh tables available
+        // This is when overtime alert system becomes truly useful
+        return trySelectFromTables(recentlyUsedTables, guestCount);
+    }
+    
+    /**
+     * Checks if a table has any reservation within 120 minutes before the target time
+     * This helps identify "recently used" tables that should be deprioritized
+     */
+    private boolean hasRecentReservation(Integer tableId, LocalDateTime reservedAt) {
+        // Check for reservations in the 120-minute window before this reservation
+        LocalDateTime checkStart = reservedAt.minusMinutes(120);
+        
+        return invoiceRepository.hasRecentReservationInWindow(tableId, checkStart, reservedAt);
+    }
+    
+    /**
+     * Checks if a table has any future reservation within the next few hours
+     * This prevents walk-in customers from being assigned to tables with upcoming reservations
+     * 
+     * Example: If walk-in at 10:00 and table has reservation at 12:00,
+     * this method returns true to prevent conflict
+     */
+    private boolean hasFutureReservationSoon(Integer tableId, LocalDateTime currentTime) {
+        LocalDateTime futureCheckEnd = currentTime.plusHours(FUTURE_RESERVATION_CHECK_HOURS);
+        return invoiceRepository.hasFutureReservationInWindow(tableId, currentTime, futureCheckEnd);
+    }
+    
+    /**
+     * Attempts to select optimal tables from a given list
+     * For recently used tables, sorts by priority score (real-time status)
+     * Uses the same algorithm as before: single table → combinations → greedy
+     */
+    private List<DiningTable> trySelectFromTables(List<DiningTable> tables, int guestCount) {
         if (tables.isEmpty()) {
             return List.of();
         }
 
         List<DiningTable> sorted = new ArrayList<>(tables);
-        sorted.sort(Comparator.comparingInt(this::capacitySafe));
+        
+        // Sort by priority score (descending) first, then by capacity
+        sorted.sort((t1, t2) -> {
+            int score1 = calculateTablePriorityScore(t1.getId());
+            int score2 = calculateTablePriorityScore(t2.getId());
+            if (score1 != score2) {
+                return Integer.compare(score2, score1); // Higher score first
+            }
+            return Integer.compare(capacitySafe(t1), capacitySafe(t2)); // Then by capacity
+        });
 
+        // Try single table first
         for (DiningTable table : sorted) {
             if (capacitySafe(table) >= guestCount) {
                 return List.of(table);
             }
         }
 
+        // Try combinations of tables
         int maxTables = Math.min(MAX_TABLES_TO_COMBINE, sorted.size());
         for (int k = 2; k <= maxTables; k++) {
             List<DiningTable> best = findBestCombo(sorted, guestCount, k);
@@ -473,6 +541,7 @@ public class ReservationService {
             }
         }
 
+        // Greedy approach as last resort
         List<DiningTable> greedy = new ArrayList<>();
         int total = 0;
         for (int i = sorted.size() - 1; i >= 0 && total < guestCount; i--) {
@@ -482,6 +551,65 @@ public class ReservationService {
         }
 
         return total >= guestCount ? greedy : List.of();
+    }
+    
+    /**
+     * Calculates priority score for a table based on real-time status
+     * Higher score = higher priority (safer to assign)
+     * 
+     * Score breakdown:
+     * - 100: Table's current invoice is PAID or CANCELLED (definitely available)
+     * - 80-99: Table's current invoice is IN_PROGRESS and near completion (90+ minutes)
+     * - 60-79: Table's current invoice is IN_PROGRESS and mid-way (60-89 minutes)
+     * - 40-59: Table's current invoice is IN_PROGRESS and just started (30-59 minutes)
+     * - 20-39: Table's current invoice is IN_PROGRESS and very recent (< 30 minutes)
+     * - 10: Table's current invoice is RESERVED but not checked in yet
+     * - 0: No recent activity
+     */
+    private int calculateTablePriorityScore(Integer tableId) {
+        // Find the CURRENT active invoice for this table (prioritizes IN_PROGRESS over RESERVED)
+        List<Invoice> invoices = invoiceRepository.findCurrentActiveInvoicesByTableId(tableId);
+        
+        if (invoices == null || invoices.isEmpty()) {
+            return 0; // No recent activity
+        }
+        
+        Invoice invoice = invoices.get(0); // Get first result (highest priority)
+        String status = invoice.getInvoiceStatus();
+        
+        // PAID or CANCELLED = definitely available
+        if ("PAID".equals(status) || "CANCELLED".equals(status)) {
+            return 100;
+        }
+        
+        // RESERVED but not checked in yet = low priority (might still check in)
+        if ("RESERVED".equals(status)) {
+            return 10;
+        }
+        
+        // IN_PROGRESS = calculate based on dining duration
+        if ("IN_PROGRESS".equals(status) && invoice.getCheckedInAt() != null) {
+            long diningMinutes = java.time.Duration.between(
+                invoice.getCheckedInAt(), 
+                java.time.Instant.now()
+            ).toMinutes();
+            
+            if (diningMinutes >= 90) {
+                // Near or past expected completion time
+                return 80 + (int) Math.min(19, (diningMinutes - 90) / 5); // 80-99
+            } else if (diningMinutes >= 60) {
+                // Mid-way through meal
+                return 60 + (int) ((diningMinutes - 60) * 20 / 30); // 60-79
+            } else if (diningMinutes >= 30) {
+                // Just started
+                return 40 + (int) ((diningMinutes - 30) * 20 / 30); // 40-59
+            } else {
+                // Very recent
+                return 20 + (int) (diningMinutes * 20 / 30); // 20-39
+            }
+        }
+        
+        return 0; // Default
     }
 
     private List<DiningTable> findBestCombo(List<DiningTable> tables, int guestCount, int k) {
@@ -536,35 +664,59 @@ public class ReservationService {
      * Requirements 6.1, 6.2, 6.3, 6.4, 6.5
      */
     private void validateReservationGap(List<DiningTable> selectedTables, LocalDateTime newReservedAt) {
+        LocalDateTime newEndTime = newReservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
+        
         for (DiningTable table : selectedTables) {
-            // Query for existing RESERVED reservations for this table
-            List<Invoice> existingReservations = invoiceRepository.findAll().stream()
-                    .filter(inv -> "RESERVED".equals(inv.getInvoiceStatus()))
-                    .filter(inv -> inv.getReservedAt() != null)
-                    .filter(inv -> {
-                        List<InvoiceDiningTable> invTables = 
-                            invoiceDiningTableRepository.findByInvoiceIdWithTable(inv.getId());
-                        return invTables.stream()
-                            .anyMatch(idt -> idt.getDiningTable() != null && 
-                                           idt.getDiningTable().getId().equals(table.getId()));
-                    })
-                    .collect(Collectors.toList());
+            // Use optimized query instead of findAll()
+            List<Invoice> existingReservations = invoiceRepository.findReservedReservationsByTableId(table.getId());
 
             for (Invoice existingReservation : existingReservations) {
                 LocalDateTime existingReservedAt = existingReservation.getReservedAt();
-                // Calculate end time = reserved_at + 90 minutes (Requirement 6.2)
                 LocalDateTime existingEndTime = existingReservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
                 
-                // Verify new reservation is at least 120 minutes after existing end time (Requirement 6.1)
-                LocalDateTime minimumAllowedTime = existingEndTime.plusMinutes(120);
+                // Check if slots overlap or cleanup buffer is insufficient
+                boolean hasConflict = false;
+                String conflictReason = "";
                 
-                if (newReservedAt.isBefore(minimumAllowedTime)) {
-                    // Format descriptive error message (Requirement 6.3)
-                    throw new IllegalArgumentException(
-                        String.format("Cannot create reservation: table %s has a reservation ending at %s, minimum 120-minute gap required",
-                            table.getTableName(),
-                            existingEndTime.toString())
+                if (newReservedAt.isBefore(existingEndTime) && newEndTime.isAfter(existingReservedAt)) {
+                    // Slots overlap
+                    hasConflict = true;
+                    conflictReason = String.format(
+                        "Bàn %s đã có đặt bàn từ %s đến %s (trùng thời gian)",
+                        table.getTableName(),
+                        existingReservedAt.toString(),
+                        existingEndTime.toString()
                     );
+                } else if (newReservedAt.isAfter(existingEndTime)) {
+                    // New is after existing: check cleanup buffer from existingEnd to newStart
+                    long gapMinutes = java.time.Duration.between(existingEndTime, newReservedAt).toMinutes();
+                    if (gapMinutes < CLEANUP_BUFFER_MINUTES) {
+                        hasConflict = true;
+                        conflictReason = String.format(
+                            "Bàn %s đã có đặt bàn kết thúc lúc %s, cần %d phút dọn dẹp (hiện tại chỉ %d phút)",
+                            table.getTableName(),
+                            existingEndTime.toString(),
+                            CLEANUP_BUFFER_MINUTES,
+                            gapMinutes
+                        );
+                    }
+                } else if (existingReservedAt.isAfter(newEndTime)) {
+                    // Existing is after new: check cleanup buffer from newEnd to existingStart
+                    long gapMinutes = java.time.Duration.between(newEndTime, existingReservedAt).toMinutes();
+                    if (gapMinutes < CLEANUP_BUFFER_MINUTES) {
+                        hasConflict = true;
+                        conflictReason = String.format(
+                            "Bàn %s sẽ có đặt bàn lúc %s, cần %d phút dọn dẹp (hiện tại chỉ %d phút)",
+                            table.getTableName(),
+                            existingReservedAt.toString(),
+                            CLEANUP_BUFFER_MINUTES,
+                            gapMinutes
+                        );
+                    }
+                }
+                
+                if (hasConflict) {
+                    throw new IllegalArgumentException(conflictReason);
                 }
             }
         }

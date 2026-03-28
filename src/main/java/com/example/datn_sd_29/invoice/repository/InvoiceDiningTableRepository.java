@@ -53,4 +53,60 @@ public interface InvoiceDiningTableRepository extends JpaRepository<InvoiceDinin
             @Param("tableId") Integer tableId,
             @Param("status") String status
     );
+
+    /**
+     * Find all distinct invoices for a table with given statuses.
+     * Used for safe invoice lookup - returns all matching invoices to detect conflicts.
+     * Does NOT use LIMIT 1 to avoid silently picking wrong invoice for merged tables.
+     */
+    @Query("""
+        select distinct idt.invoice
+        from InvoiceDiningTable idt
+        join idt.invoice inv
+        where idt.diningTable.id = :tableId
+          and inv.invoiceStatus in :statuses
+    """)
+    List<Invoice> findDistinctInvoicesByTableAndStatuses(
+            @Param("tableId") Integer tableId,
+            @Param("statuses") Collection<String> statuses
+    );
+
+    /**
+     * Find invoices that conflict with a table within a time window.
+     * Used for check-in conflict detection with proper overlap checking.
+     * 
+     * Overlap logic: Two time ranges [A_start, A_end] and [B_start, B_end] overlap if:
+     * A_start < B_end AND A_end > B_start
+     * 
+     * For our case:
+     * - Existing invoice range: [existingStart, existingEnd]
+     * - New window range: [windowStart, windowEnd]
+     * - They overlap if: existingStart < windowEnd AND existingEnd > windowStart
+     */
+    @Query("""
+        select distinct idt.invoice
+        from InvoiceDiningTable idt
+        join idt.invoice inv
+        where idt.diningTable.id = :tableId
+          and inv.invoiceStatus in :statuses
+          and (
+            (
+              inv.checkedInAt is not null
+              and inv.checkedInAt < :windowEnd
+              and timestampadd(minute, :durationMinutes, inv.checkedInAt) > :windowStart
+            )
+            or (
+              inv.reservedAt is not null
+              and inv.reservedAt < :windowEnd
+              and timestampadd(minute, :durationMinutes, inv.reservedAt) > :windowStart
+            )
+          )
+    """)
+    List<Invoice> findConflictingInvoicesByTableWithinWindow(
+            @Param("tableId") Integer tableId,
+            @Param("statuses") Collection<String> statuses,
+            @Param("windowStart") LocalDateTime windowStart,
+            @Param("windowEnd") LocalDateTime windowEnd,
+            @Param("durationMinutes") int durationMinutes
+    );
 }

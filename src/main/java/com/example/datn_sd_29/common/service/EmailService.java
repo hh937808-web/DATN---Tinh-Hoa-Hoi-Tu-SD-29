@@ -78,4 +78,11 @@ public class EmailService {
         );
         mailSender.send(mail);
     }
+    
+    /**
+     * Send no-show notification email
+     */
+    public void sendNoShowEmail(SimpleMailMessage mail) {
+        mailSender.send(mail);
+    }
 }

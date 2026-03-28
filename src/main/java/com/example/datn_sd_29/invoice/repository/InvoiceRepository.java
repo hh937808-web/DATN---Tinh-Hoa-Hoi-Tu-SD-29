@@ -50,13 +50,16 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
                                                            @Param("threshold") Instant threshold);
 
     // Next reservation query - Requirements 3.1, 3.2, 3.3
-    @Query("SELECT i FROM Invoice i " +
-           "JOIN InvoiceDiningTable idt ON idt.invoice.id = i.id " +
-           "WHERE idt.diningTable.id = :tableId " +
-           "AND i.invoiceStatus = :status " +
-           "AND i.reservedAt BETWEEN :start AND :end " +
-           "ORDER BY i.reservedAt ASC")
-    Optional<Invoice> findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
+    @Query(value = "SELECT TOP 1 * FROM (" +
+           "  SELECT i.* " +
+           "  FROM Invoice i " +
+           "  JOIN InvoiceDiningTable idt ON idt.invoice_id = i.invoice_id " +
+           "  WHERE idt.dining_table_id = :tableId " +
+           "  AND i.invoice_status = :status " +
+           "  AND i.reserved_at BETWEEN :start AND :end " +
+           ") ranked " +
+           "ORDER BY ranked.reserved_at ASC", nativeQuery = true)
+    List<Invoice> findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
             @Param("tableId") Integer tableId,
             @Param("status") String status,
             @Param("start") LocalDateTime start,
@@ -81,4 +84,67 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
 
     // Find invoices by status
     List<Invoice> findByInvoiceStatus(String invoiceStatus);
+
+    // Find most recent invoice for a specific table (for priority scoring)
+    @Query(value = "SELECT TOP 1 * FROM (" +
+           "  SELECT i.* " +
+           "  FROM Invoice i " +
+           "  JOIN InvoiceDiningTable idt ON idt.invoice_id = i.invoice_id " +
+           "  WHERE idt.dining_table_id = :tableId " +
+           "  AND i.reserved_at IS NOT NULL " +
+           ") ranked " +
+           "ORDER BY ranked.reserved_at DESC", nativeQuery = true)
+    List<Invoice> findMostRecentInvoicesByTableId(@Param("tableId") Integer tableId);
+
+    // Check if table has recent reservations within time window
+    @Query("SELECT COUNT(i) > 0 FROM Invoice i " +
+           "JOIN InvoiceDiningTable idt ON idt.invoice.id = i.id " +
+           "WHERE idt.diningTable.id = :tableId " +
+           "AND i.invoiceStatus IN ('RESERVED', 'IN_PROGRESS') " +
+           "AND i.reservedAt IS NOT NULL " +
+           "AND i.reservedAt > :checkStart " +
+           "AND i.reservedAt < :checkEnd")
+    boolean hasRecentReservationInWindow(@Param("tableId") Integer tableId,
+                                         @Param("checkStart") LocalDateTime checkStart,
+                                         @Param("checkEnd") LocalDateTime checkEnd);
+
+    // Find current active invoice for a table (IN_PROGRESS or most recent RESERVED)
+    @Query(value = "SELECT TOP 1 * FROM (" +
+           "  SELECT i.*, " +
+           "    CASE i.invoice_status " +
+           "      WHEN 'IN_PROGRESS' THEN 1 " +
+           "      WHEN 'RESERVED' THEN 2 " +
+           "      WHEN 'PAID' THEN 3 " +
+           "      WHEN 'CANCELLED' THEN 4 " +
+           "    END as status_priority " +
+           "  FROM Invoice i " +
+           "  JOIN InvoiceDiningTable idt ON idt.invoice_id = i.invoice_id " +
+           "  WHERE idt.dining_table_id = :tableId " +
+           "  AND i.invoice_status IN ('IN_PROGRESS', 'RESERVED', 'PAID', 'CANCELLED') " +
+           ") ranked " +
+           "ORDER BY ranked.status_priority, ranked.reserved_at DESC", nativeQuery = true)
+    List<Invoice> findCurrentActiveInvoicesByTableId(@Param("tableId") Integer tableId);
+
+    // Check if table has future reservation within time window (for walk-in conflict prevention)
+    @Query("SELECT COUNT(i) > 0 FROM Invoice i " +
+           "JOIN InvoiceDiningTable idt ON idt.invoice.id = i.id " +
+           "WHERE idt.diningTable.id = :tableId " +
+           "AND i.invoiceStatus = 'RESERVED' " +
+           "AND i.reservedAt > :currentTime " +
+           "AND i.reservedAt < :futureCheckEnd")
+    boolean hasFutureReservationInWindow(@Param("tableId") Integer tableId,
+                                         @Param("currentTime") LocalDateTime currentTime,
+                                         @Param("futureCheckEnd") LocalDateTime futureCheckEnd);
+
+    /**
+     * Find RESERVED reservations for a specific table.
+     * Used for validateReservationGap optimization.
+     */
+    @Query("SELECT i FROM Invoice i " +
+           "JOIN InvoiceDiningTable idt ON idt.invoice.id = i.id " +
+           "WHERE idt.diningTable.id = :tableId " +
+           "AND i.invoiceStatus = 'RESERVED' " +
+           "AND i.reservedAt IS NOT NULL " +
+           "ORDER BY i.reservedAt ASC")
+    List<Invoice> findReservedReservationsByTableId(@Param("tableId") Integer tableId);
 }

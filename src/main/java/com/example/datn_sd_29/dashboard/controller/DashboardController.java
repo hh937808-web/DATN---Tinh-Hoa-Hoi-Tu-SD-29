@@ -7,6 +7,7 @@ import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.dashboard.dto.InvoicePageResponse;
 import com.example.datn_sd_29.dashboard.service.DashboardService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
@@ -35,7 +37,7 @@ public class DashboardController {
             DashboardStatsResponse stats = dashboardService.getStats(startDate, endDate);
             return ResponseEntity.ok(ApiResponse.success("Lấy thống kê thành công", stats));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting dashboard stats: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -58,7 +60,7 @@ public class DashboardController {
             List<TopProductResponse> products = dashboardService.getTopProducts(startDate, endDate, limit);
             return ResponseEntity.ok(ApiResponse.success("Lấy sản phẩm bán chạy thành công", products));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting top products: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -73,7 +75,7 @@ public class DashboardController {
             List<RecentInvoiceResponse> invoices = dashboardService.getRecentInvoices(limit);
             return ResponseEntity.ok(ApiResponse.success("Lấy hóa đơn gần đây thành công", invoices));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting recent invoices: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -86,7 +88,7 @@ public class DashboardController {
             List<com.example.datn_sd_29.dashboard.dto.TableStatusResponse> tables = dashboardService.getTableStatus();
             return ResponseEntity.ok(ApiResponse.success("Lấy trạng thái bàn thành công", tables));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting table status: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -101,7 +103,7 @@ public class DashboardController {
             com.example.datn_sd_29.dashboard.dto.TableDetailResponse detail = dashboardService.getTableDetail(tableId);
             return ResponseEntity.ok(ApiResponse.success("Lấy thông tin bàn thành công", detail));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting table detail for tableId {}: {}", tableId, e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -123,7 +125,7 @@ public class DashboardController {
             com.example.datn_sd_29.dashboard.dto.RevenueChartResponse chart = dashboardService.getRevenueChart(startDate, endDate);
             return ResponseEntity.ok(ApiResponse.success("Lấy biểu đồ doanh thu thành công", chart));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting revenue chart: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -148,7 +150,7 @@ public class DashboardController {
             );
             return ResponseEntity.ok(ApiResponse.success("Lấy danh sách hóa đơn thành công", response));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting all invoices: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
@@ -163,7 +165,7 @@ public class DashboardController {
             com.example.datn_sd_29.invoice.dto.PaymentDetailResponse detail = dashboardService.getInvoiceDetail(invoiceId);
             return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết hóa đơn thành công", detail));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error getting invoice detail for invoiceId {}: {}", invoiceId, e.getMessage(), e);
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );

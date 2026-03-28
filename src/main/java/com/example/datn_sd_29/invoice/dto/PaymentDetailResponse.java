@@ -31,9 +31,7 @@ public class PaymentDetailResponse {
 
     private BigDecimal subtotal;
     private BigDecimal itemVoucherDiscount;
-    private BigDecimal manualDiscountPercent;
-    private BigDecimal manualDiscountAmount;
-    private BigDecimal taxPercent;
+    private BigDecimal vatPercent;
     private BigDecimal serviceFeePercent;
     private Integer pointValue;
 

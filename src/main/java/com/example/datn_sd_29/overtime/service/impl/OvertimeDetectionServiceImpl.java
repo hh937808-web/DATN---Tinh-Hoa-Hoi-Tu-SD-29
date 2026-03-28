@@ -162,8 +162,9 @@ public class OvertimeDetectionServiceImpl implements OvertimeDetectionService {
     @Override
     public Optional<Invoice> findNextReservation(Integer tableId, LocalDateTime currentTime) {
         LocalDateTime endTime = currentTime.plusMinutes(ALERT_WINDOW_MINUTES);
-        return invoiceRepository.findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
+        List<Invoice> invoices = invoiceRepository.findFirstByDiningTableIdAndInvoiceStatusAndReservedAtBetweenOrderByReservedAtAsc(
                 tableId, "RESERVED", currentTime, endTime);
+        return invoices.isEmpty() ? Optional.empty() : Optional.of(invoices.get(0));
     }
     
     @Override
@@ -193,6 +194,10 @@ public class OvertimeDetectionServiceImpl implements OvertimeDetectionService {
     
     /**
      * Calculates alert urgency based on time until next reservation.
+     * CRITICAL: < 30 minutes - Immediate action required
+     * HIGH: < 60 minutes - Action needed soon
+     * MEDIUM: < 120 minutes - Monitor closely
+     * LOW: > 120 minutes - Informational only
      * Requirements: 5.3
      */
     private AlertUrgency calculateUrgency(LocalDateTime nextReservationTime, LocalDateTime currentTime) {
@@ -202,8 +207,10 @@ public class OvertimeDetectionServiceImpl implements OvertimeDetectionService {
             return AlertUrgency.CRITICAL;
         } else if (minutesUntilReservation < 60) {
             return AlertUrgency.HIGH;
-        } else {
+        } else if (minutesUntilReservation < 120) {
             return AlertUrgency.MEDIUM;
+        } else {
+            return AlertUrgency.LOW;
         }
     }
 }
