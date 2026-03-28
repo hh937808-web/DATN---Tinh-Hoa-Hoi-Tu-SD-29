@@ -59,7 +59,8 @@ public class SecurityConfig {
                                 "/api/public/**",         // Public notification endpoints
                                 "/public/**",             // Direct public access
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
-                                "/error"                  // Error page
+                                "/error",                  // Error page
+                                "/api/kitchen/**"           // Update status product/combo
                         ).permitAll()
                         
                         // Public GET endpoints cho khách hàng xem menu
