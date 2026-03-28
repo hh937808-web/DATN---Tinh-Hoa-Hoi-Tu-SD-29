@@ -2,6 +2,7 @@ package com.example.datn_sd_29.dining_table.repository;
 
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -15,6 +16,26 @@ import java.util.List;
 public interface DiningTableRepository extends JpaRepository<DiningTable, Integer> {
     List<DiningTable> findBySeatingCapacityGreaterThanEqual(Integer seatingCapacity);
     Long countByTableStatus(String tableStatus);
+
+    List<DiningTable> findByTableNameContainingIgnoreCaseAndTableStatusNot(
+            String tableName,
+            String excludedStatus
+    );
+
+    List<DiningTable> findByTableStatusAndTableStatusNot(
+            String tableStatus,
+            String excludedStatus
+    );
+
+    List<DiningTable> findBySeatingCapacityAndTableStatusNot(
+            Integer seatingCapacity,
+            String excludedStatus
+    );
+    List<DiningTable> findByTableStatusNot(
+            String excludedStatus,
+            Sort sort
+    );
+
 
     // Batch table status update - Requirements 1.2, 9.1, 9.2
     @Modifying
