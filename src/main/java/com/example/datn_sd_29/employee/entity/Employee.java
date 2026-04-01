@@ -1,10 +1,7 @@
 package com.example.datn_sd_29.employee.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import com.example.datn_sd_29.employee.enums.Gender;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -35,9 +32,7 @@ public class Employee {
     @Column(name = "password", length = 150)
     private String password;
 
-    @Size(max = 50)
-    @Nationalized
-    @Column(name = "role", length = 50)
+    @Column(name = "role")
     private String role;
 
     @Size(max = 10)
@@ -48,11 +43,18 @@ public class Employee {
     @Column(name = "email", length = 200)
     private String email;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private Gender gender;
+
     @ColumnDefault("getdate()")
     @Column(name = "created_at")
     private Instant createdAt;
 
     @Column(name = "is_active")
     private Boolean isActive;
+
+    @Column(name = "address")
+    private String address;
 
 }
