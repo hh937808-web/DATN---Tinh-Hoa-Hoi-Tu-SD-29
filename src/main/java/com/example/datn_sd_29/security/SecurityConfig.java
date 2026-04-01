@@ -46,6 +46,7 @@ public class SecurityConfig {
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
                                 "/error"                  // Error page
                         ).permitAll()
+                        .requestMatchers("/api/customers/**").permitAll()
                         // Public GET endpoints cho khách hàng
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-combos/**").permitAll()

@@ -2,9 +2,12 @@ package com.example.datn_sd_29.customer.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -50,7 +53,21 @@ public class Customer {
     @Column(name = "created_at")
     private Instant createdAt;
 
-    @Column(name = "is_active")
+    @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender", length = 10)
+    private Gender gender;
+
+    @PrePersist
+    public void prePersist() {
+        if(this.gender == null){
+            this.gender = Gender.OTHER;
+        }
+        if (this.isActive == null) {
+            this.isActive = true;
+        }
+        this.createdAt = Instant.now();
+    }
 }
