@@ -34,21 +34,33 @@ public class WalkInService {
     private final EmployeeRepository employeeRepository;
     private final CustomerRepository customerRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    
+    @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     @Transactional
     public WalkInCheckInResponse checkInWalkIn(WalkInCheckInRequest request) {
         // Validate authentication
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal())) {
+        
+        // Nếu security bị tắt, bỏ qua authentication check
+        if (securityEnabled && (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal()))) {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
-        String email = auth.getPrincipal().toString();
-        
-        // Get employee from authentication
-        Employee employee = employeeRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+        // Get employee based on security mode
+        Employee employee;
+        if (securityEnabled) {
+            // Production mode: lấy employee từ JWT token
+            String email = auth.getPrincipal().toString();
+            employee = employeeRepository.findByEmailIgnoreCase(email)
+                    .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+        } else {
+            // Development mode: sử dụng employee mặc định (ID = 1)
+            employee = employeeRepository.findById(1)
+                    .orElseThrow(() -> new IllegalArgumentException("Default employee not found with id: 1"));
+        }
 
         // Validate request
         if (request.getTableIds() == null || request.getTableIds().isEmpty()) {

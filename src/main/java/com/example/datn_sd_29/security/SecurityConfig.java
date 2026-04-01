@@ -53,26 +53,38 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints - không cần authentication
+                        // ========================================
+                        // PUBLIC ENDPOINTS - Không cần authentication
+                        // ========================================
                         .requestMatchers(
                                 "/api/auth/**",           // Authentication endpoints
                                 "/api/public/**",         // Public notification endpoints
                                 "/public/**",             // Direct public access
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
-                                "/error",                  // Error page
-                                "/api/kitchen/**"           // Update status product/combo
+                                "/error",                 // Error page
+                                "/api/kitchen/**"         // Kitchen staff update status
                         ).permitAll()
                         
-                        // Public GET endpoints cho khách hàng xem menu
+                        // Public GET endpoints - Khách xem menu (không cần đăng nhập)
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-combos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-combo-vouchers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-vouchers/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/customer-vouchers/**").permitAll()
                         
-                        // ADMIN only - Dashboard & Management
+                        // ========================================
+                        // ADMIN + RECEPTION - Dashboard & Reports
+                        // ========================================
                         .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "RECEPTION")
+                        
+                        // ========================================
+                        // ADMIN ONLY
+                        // ========================================
                         .requestMatchers("/api/debug/**").hasRole("ADMIN")
+                        .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
+                        
+                        // Product Management
                         .requestMatchers(HttpMethod.POST, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
@@ -80,23 +92,43 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/product-combos/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/product-combos/**").hasRole("ADMIN")
                         .requestMatchers("/api/product-combo-items/**").hasRole("ADMIN")
+                        
+                        // Voucher Management
                         .requestMatchers(HttpMethod.POST, "/api/product-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/product-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/product-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/product-combo-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/product-combo-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/product-combo-vouchers/**").hasRole("ADMIN")
-                        .requestMatchers("/api/customer-vouchers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/customer-vouchers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/customer-vouchers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/customer-vouchers/**").hasRole("ADMIN")
                         
-                        // RECEPTION only - Reservation & Payment
-                        .requestMatchers("/api/reservation/**").hasRole("RECEPTION")
+                        // ========================================
+                        // RECEPTION ONLY
+                        // ========================================
                         .requestMatchers("/api/reception/payment/**").hasRole("RECEPTION")
                         .requestMatchers("/api/walk-in/**").hasRole("RECEPTION")
+                        .requestMatchers("/api/reservation/all").hasRole("RECEPTION")  // Xem tất cả đặt bàn
                         
-                        // STAFF only - Order (handled by @PreAuthorize in StaffOrderController)
+                        // ========================================
+                        // STAFF + RECEPTION - Overtime Alerts
+                        // ========================================
+                        .requestMatchers("/api/overtime/alerts/**").hasAnyRole("STAFF", "RECEPTION")
+                        
+                        // ========================================
+                        // STAFF ONLY
+                        // ========================================
                         .requestMatchers("/api/tables/**").hasRole("STAFF")
                         
+                        // ========================================
+                        // USER (Customer) - Authenticated users
+                        // ========================================
+                        .requestMatchers("/api/reservation/**").authenticated()  // Đặt bàn (cần đăng nhập)
+                        
+                        // ========================================
                         // Tất cả các request khác cần authentication
+                        // ========================================
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/tables")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('STAFF')")
 public class StaffOrderController {
     private final StaffOrderService staffOrderService;
 

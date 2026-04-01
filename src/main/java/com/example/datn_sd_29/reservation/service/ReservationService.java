@@ -44,6 +44,9 @@ public class ReservationService {
     private final EmployeeRepository employeeRepository;
     private final EmailService emailService;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    
+    @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     private static final int RESERVATION_DURATION_MINUTES = 90;
     private static final int PRE_RESERVE_BUFFER_MINUTES = 30;
@@ -74,15 +77,34 @@ public class ReservationService {
 
     public ReservationResponse reserveTable(ReservationRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal())) {
+        
+        // Nếu security bị tắt, bỏ qua authentication check
+        if (securityEnabled && (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal()))) {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
-        String email = auth.getPrincipal().toString();
-
-        Customer customer = customerRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập tài khoản!"));
+        // Khi security tắt, sử dụng email mặc định hoặc tạo customer mới
+        String email;
+        Customer customer;
+        
+        if (securityEnabled) {
+            // Production mode: lấy email từ JWT token
+            email = auth.getPrincipal().toString();
+            customer = customerRepository.findByEmailIgnoreCase(email)
+                    .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập tài khoản!"));
+        } else {
+            // Development mode: tạo hoặc tìm customer với email test
+            email = "test@example.com";
+            customer = customerRepository.findByEmailIgnoreCase(email)
+                    .orElseGet(() -> {
+                        Customer newCustomer = new Customer();
+                        newCustomer.setEmail(email);
+                        newCustomer.setFullName(request.getFullName());
+                        newCustomer.setPhoneNumber(request.getPhoneNumber());
+                        return customerRepository.save(newCustomer);
+                    });
+        }
 
         customer.setFullName(request.getFullName());
         customer.setPhoneNumber(request.getPhoneNumber());
@@ -153,8 +175,10 @@ public class ReservationService {
 
     public ReservationResponse getReservationByCode(String reservationCode) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal())) {
+        
+        // Nếu security bị tắt, bỏ qua authentication check
+        if (securityEnabled && (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal()))) {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
@@ -252,12 +276,14 @@ public class ReservationService {
 
     public void sendReservationDetailsEmail(String reservationCode) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal())) {
+        
+        // Nếu security bị tắt, bỏ qua authentication check
+        if (securityEnabled && (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
+            || "anonymousUser".equals(auth.getPrincipal()))) {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
-        String email = auth.getPrincipal().toString();
+        String email = securityEnabled ? auth.getPrincipal().toString() : null;
 
         Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
                 .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));

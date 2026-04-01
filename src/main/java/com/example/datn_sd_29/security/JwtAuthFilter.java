@@ -16,6 +16,9 @@ import java.util.List;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
+    
+    @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     public JwtAuthFilter(JwtService jwtService) {
         this.jwtService = jwtService;
@@ -28,6 +31,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
+        // Nếu security bị tắt, bỏ qua hoàn toàn JWT authentication
+        if (!securityEnabled) {
+            System.out.println("🔓 Security DISABLED - Allowing request: " + request.getRequestURI());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        System.out.println("🔒 Security ENABLED - Checking JWT for: " + request.getRequestURI());
+        
         String path = request.getRequestURI();
         
         // Bỏ qua authentication cho các endpoint công khai
