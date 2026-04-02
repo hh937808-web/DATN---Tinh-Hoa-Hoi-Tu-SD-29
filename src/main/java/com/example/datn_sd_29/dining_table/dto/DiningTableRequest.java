@@ -21,4 +21,6 @@ public class DiningTableRequest {
 
     @NotBlank(message = "Trạng thái không được để trống")
     private String tableStatus;
+
+    private String area;
 }
