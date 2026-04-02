@@ -48,27 +48,28 @@ public class EmployeeController {
         return ResponseEntity.ok(new EmployeeResponse(emp));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<String> delete(@PathVariable Integer id) {
-        employeeService.delete(id);
-        return ResponseEntity.ok("Xóa mềm thành công");
+    @PutMapping("/{id}/toggle-status")
+    public ResponseEntity<String> toggleStatus(@PathVariable Integer id) {
+        employeeService.toggleStatus(id);
+        return ResponseEntity.ok("Cập nhật trạng thái thành công");
     }
-
     @GetMapping("/search")
     public ResponseEntity<List<EmployeeResponse>> search(
             @RequestParam(required = false, defaultValue = "") String keyword,
             @RequestParam(required = false, defaultValue = "") String role,
             @RequestParam(required = false, defaultValue = "") String gender,
             @RequestParam(required = false) String fromDate,
-            @RequestParam(required = false) String toDate
+            @RequestParam(required = false) String toDate,
+            @RequestParam(required = false) String status
     ) {
         return ResponseEntity.ok(
-                employeeService.searchEmployee(keyword, role, gender, fromDate, toDate)
+                employeeService.searchEmployee(keyword, role, gender, fromDate, toDate, status)
                         .stream()
                         .map(EmployeeResponse::new)
                         .toList()
         );
     }
+
 
     @GetMapping("/sort")
     public ResponseEntity<List<EmployeeResponse>> sort(

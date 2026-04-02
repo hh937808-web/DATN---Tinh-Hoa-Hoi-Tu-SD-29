@@ -72,20 +72,19 @@ public class EmployeeService {
         return employeeRepository.save(emp);
     }
 
-    // ====== DELETE / KHÓA ======
-    public void delete(Integer id) {
+    public void toggleStatus(Integer id) {
         Employee emp = getById(id);
-        emp.setIsActive(false);
+        emp.setIsActive(!emp.getIsActive()); // 👈 ĐẢO TRUE ↔ FALSE
         employeeRepository.save(emp);
     }
 
-    // ====== SEARCH ======
     public List<Employee> searchEmployee(
             String keyword,
             String role,
             String gender,
             String fromDate,
-            String toDate
+            String toDate,
+            String status   // 👈 THÊM
     ) {
         String kw = (keyword == null || keyword.isBlank()) ? "" : keyword.trim();
         String rl = (role == null || role.isBlank()) ? "" : role.trim();
@@ -93,6 +92,12 @@ public class EmployeeService {
         Gender gd = null;
         if (gender != null && !gender.isBlank()) {
             gd = Gender.valueOf(gender.trim().toUpperCase());
+        }
+
+        // ====== convert status ======
+        Boolean st = null;
+        if (status != null && !status.isBlank()) {
+            st = Boolean.parseBoolean(status); // "true" / "false"
         }
 
         Instant from = null;
@@ -114,10 +119,9 @@ public class EmployeeService {
                     .toInstant();
         }
 
-        return employeeRepository.searchEmployee(kw, rl, gd, from, to)
+        return employeeRepository.searchEmployee(kw, rl, gd, from, to, st)
                 .stream()
-                .filter(e -> Boolean.TRUE.equals(e.getIsActive())
-                        && !"ADMIN".equalsIgnoreCase(e.getRole()))
+                .filter(e -> !"ADMIN".equalsIgnoreCase(e.getRole()))
                 .toList();
     }
 
