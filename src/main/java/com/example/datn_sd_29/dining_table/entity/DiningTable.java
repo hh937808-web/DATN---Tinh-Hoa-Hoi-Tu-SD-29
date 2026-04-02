@@ -46,10 +46,4 @@ public class DiningTable {
     @Column(name = "created_at")
     private Instant createdAt;
 
-    @Column(name = "area")
-    private String area;
-
-    @Column(name = "floor")
-    private Integer floor;
-
 }
