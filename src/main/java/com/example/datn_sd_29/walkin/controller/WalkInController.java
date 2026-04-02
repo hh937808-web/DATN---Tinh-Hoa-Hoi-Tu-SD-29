@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.walkin.controller;
 
 import com.example.datn_sd_29.common.dto.ApiResponse;
+import com.example.datn_sd_29.walkin.dto.SuggestedTablesResponse;
 import com.example.datn_sd_29.walkin.dto.WalkInCheckInRequest;
 import com.example.datn_sd_29.walkin.dto.WalkInCheckInResponse;
 import com.example.datn_sd_29.walkin.service.WalkInService;
@@ -26,5 +27,12 @@ public class WalkInController {
     public ResponseEntity<ApiResponse<Void>> cancelTable(@PathVariable String invoiceCode) {
         walkInService.cancelTable(invoiceCode);
         return ResponseEntity.ok(ApiResponse.success("Đã hủy bàn thành công", null));
+    }
+    
+    @GetMapping("/suggest-tables")
+    public ResponseEntity<ApiResponse<SuggestedTablesResponse>> suggestTables(
+            @RequestParam Integer guestCount) {
+        SuggestedTablesResponse response = walkInService.suggestTablesForWalkIn(guestCount);
+        return ResponseEntity.ok(ApiResponse.success("Gợi ý bàn thành công", response));
     }
 }

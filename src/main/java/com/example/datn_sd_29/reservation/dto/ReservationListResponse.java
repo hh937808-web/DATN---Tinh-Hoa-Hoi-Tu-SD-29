@@ -28,5 +28,7 @@ public class ReservationListResponse {
         private String tableCode;
         private String tableName;
         private Integer seatingCapacity;
+        private String area;
+        private Integer floor;
     }
 }

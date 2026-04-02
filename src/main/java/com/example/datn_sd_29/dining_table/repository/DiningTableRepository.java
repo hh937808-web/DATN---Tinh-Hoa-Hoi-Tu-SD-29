@@ -26,4 +26,12 @@ public interface DiningTableRepository extends JpaRepository<DiningTable, Intege
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT dt FROM DiningTable dt WHERE dt.id IN :tableIds")
     List<DiningTable> lockTablesForReservation(@Param("tableIds") List<Integer> tableIds);
+
+    // Find available tables by area and floor
+    @Query("SELECT dt FROM DiningTable dt WHERE dt.area = :area AND dt.floor = :floor ORDER BY dt.id ASC")
+    List<DiningTable> findByAreaAndFloorOrderById(@Param("area") String area, @Param("floor") Integer floor);
+
+    // Find available tables by floor only
+    @Query("SELECT dt FROM DiningTable dt WHERE dt.floor = :floor ORDER BY dt.area ASC, dt.id ASC")
+    List<DiningTable> findByFloorOrderByAreaAndId(@Param("floor") Integer floor);
 }

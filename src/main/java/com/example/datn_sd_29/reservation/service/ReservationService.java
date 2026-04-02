@@ -54,13 +54,24 @@ public class ReservationService {
     private static final int FUTURE_RESERVATION_CHECK_HOURS = 3; // Check future reservations within 3 hours
     private static final int CHECK_IN_EARLY_BUFFER_MINUTES = 60; // Allow check-in up to 60 minutes early
     private static final int CHECK_IN_LATE_BUFFER_MINUTES = 30; // Allow check-in up to 30 minutes late
-    private static final int MAX_TABLES_TO_COMBINE = 5;
+    private static final int MAX_TABLES_TO_COMBINE = 5; // Allow E1-E5 combination (5 tables)
     private static final Set<String> ACTIVE_STATUSES = Set.of("RESERVED", "CONFIRMED", "IN_PROGRESS");
     private static final Set<String> PROMOTION_OPTIONS = Set.of(
             "Ưu đãi sinh nhật 10% tổng hóa đơn",
             "Có mã ưu đãi riêng",
             "Đầy tiền không cần ưu đãi"
     );
+    
+    // Area-based scoring constants
+    private static final int SINGLE_AREA_COMPLETE_BONUS = 10000; // CRITICAL: Highest priority - one area can handle all guests
+    private static final int FLOOR_1_BONUS = 2000;
+    private static final int FLOOR_2_BONUS = 1000;
+    private static final int AREA_A_BONUS = 500;
+    private static final int SINGLE_TABLE_BONUS = 300;
+    private static final int CONSECUTIVE_ID_BONUS = 50; // Reduced from 100 - don't over-prioritize consecutive IDs
+    private static final int ID_DISTANCE_PENALTY = 30; // Reduced from 50 - allow some distance if it saves capacity
+    private static final int TABLE_COUNT_PENALTY = 50; // Increased from 20 - strongly prefer fewer tables
+    private static final int EXCESS_CAPACITY_PENALTY = 10; // Increased from 2 - strongly penalize wasted seats
 
     public List<AvailableTableResponse> findAvailableTables(LocalDateTime reservedAt, Integer guestCount) {
         List<DiningTable> available = getAvailableDiningTables(reservedAt, guestCount);
@@ -126,18 +137,25 @@ public class ReservationService {
 
         List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
         List<DiningTable> selectedTables = selectTablesForGuests(availableTables, guestCount, reservedAt);
-        if (selectedTables.isEmpty()) {
-            throw new IllegalArgumentException("Không còn bàn phù hợp trong thời gian đã chọn");
+        
+        // Nếu không tìm được bàn, tạo Pending Reservation
+        boolean isPendingReservation = selectedTables.isEmpty();
+        if (isPendingReservation) {
+            log.info("No tables available for {} guests at {}. Creating pending reservation.", 
+                     guestCount, reservedAt);
         }
 
         // Lock tables to prevent race condition (pessimistic write lock)
-        List<Integer> tableIds = selectedTables.stream()
-                .map(DiningTable::getId)
-                .collect(Collectors.toList());
-        diningTableRepository.lockTablesForReservation(tableIds);
+        // Skip locking if pending reservation (no tables assigned)
+        if (!isPendingReservation) {
+            List<Integer> tableIds = selectedTables.stream()
+                    .map(DiningTable::getId)
+                    .collect(Collectors.toList());
+            diningTableRepository.lockTablesForReservation(tableIds);
 
-        // Validate 120-minute gap from existing reservations (Requirements 6.1, 6.2, 6.3, 6.4, 6.5)
-        validateReservationGap(selectedTables, reservedAt);
+            // Validate 120-minute gap from existing reservations (Requirements 6.1, 6.2, 6.3, 6.4, 6.5)
+            validateReservationGap(selectedTables, reservedAt);
+        }
 
         Invoice invoice = new Invoice();
         invoice.setCustomer(customer);
@@ -147,27 +165,44 @@ public class ReservationService {
         invoice.setEmployee(emp);
 
         invoice.setInvoiceChannel("ONLINE");
-        invoice.setInvoiceStatus("RESERVED");
+        
+        // Set status based on whether tables are assigned
+        if (isPendingReservation) {
+            invoice.setInvoiceStatus("PENDING_CONFIRMATION");
+            invoice.setReservationNote(
+                (request.getNote() != null ? request.getNote() + " | " : "") +
+                "Nhà hàng đang kín, nhân viên sẽ liên hệ xác nhận"
+            );
+        } else {
+            invoice.setInvoiceStatus("RESERVED");
+            invoice.setReservationNote(request.getNote());
+        }
+        
         invoice.setReservationCode("RSV-" + System.currentTimeMillis());
         invoice.setInvoiceCode("INV-" + UUID.randomUUID());
 
         invoice.setReservedAt(reservedAt);
         invoice.setGuestCount(guestCount);
         invoice.setPromotionType(request.getPromotionType());
-        invoice.setReservationNote(request.getNote());
         invoice.setFoodNote(request.getFoodNote());
 
         invoice = invoiceRepository.save(invoice);
 
-        for (DiningTable table : selectedTables) {
-            InvoiceDiningTable idt = new InvoiceDiningTable();
-            idt.setInvoice(invoice);
-            idt.setDiningTable(table);
-            invoiceDiningTableRepository.save(idt);
-        }
+        // Only assign tables if not pending
+        if (!isPendingReservation) {
+            for (DiningTable table : selectedTables) {
+                InvoiceDiningTable idt = new InvoiceDiningTable();
+                idt.setInvoice(invoice);
+                idt.setDiningTable(table);
+                invoiceDiningTableRepository.save(idt);
+            }
 
-        // Broadcast RESERVED status via WebSocket (reuse tableIds from lock)
-        tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
+            // Broadcast RESERVED status via WebSocket
+            List<Integer> tableIds = selectedTables.stream()
+                    .map(DiningTable::getId)
+                    .collect(Collectors.toList());
+            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
+        }
 
         List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
         return buildReservationResponse(invoice, customer, tables);
@@ -332,7 +367,9 @@ public class ReservationService {
                                     link.getDiningTable().getId(),
                                     "MB-" + link.getDiningTable().getId(),
                                     link.getDiningTable().getTableName(),
-                                    link.getDiningTable().getSeatingCapacity()
+                                    link.getDiningTable().getSeatingCapacity(),
+                                    link.getDiningTable().getArea(),
+                                    link.getDiningTable().getFloor()
                             ))
                             .collect(Collectors.toList());
                     
@@ -393,7 +430,9 @@ public class ReservationService {
                                     link.getDiningTable().getId(),
                                     "MB-" + link.getDiningTable().getId(),
                                     link.getDiningTable().getTableName(),
-                                    link.getDiningTable().getSeatingCapacity()
+                                    link.getDiningTable().getSeatingCapacity(),
+                                    link.getDiningTable().getArea(),
+                                    link.getDiningTable().getFloor()
                             ))
                             .collect(Collectors.toList());
                     
@@ -443,7 +482,9 @@ public class ReservationService {
                         table.getId(),
                         "MB-" + table.getId(),
                         table.getTableName(),
-                        table.getSeatingCapacity()
+                        table.getSeatingCapacity(),
+                        table.getArea(),
+                        table.getFloor()
                 ))
                 .collect(Collectors.toList());
     }
@@ -473,17 +514,24 @@ public class ReservationService {
     }
 
     /**
-     * Selects tables for guests with smart prioritization:
-     * - Prioritizes "fresh" tables (no recent reservations within 120 minutes before)
-     * - Only uses "recently used" tables when no fresh tables available
-     * This mimics real staff behavior and maximizes overtime alert effectiveness
+     * Selects tables for guests using Area-Based Scoring System:
+     * 
+     * Priority scoring formula:
+     * Score = +2000 (floor=1) + 1000 (floor=2) + 500 (area=A) + 300 (single table)
+     *         - (max_id - min_id) * 5 - table_count * 30 - |excess_capacity| * 2
+     * 
+     * Process:
+     * 1. Classify tables by freshness (no recent reservation within 120 minutes)
+     * 2. Scan each area (A-F) and find best combo with highest score
+     * 3. Select area with highest score
+     * 4. Fallback: same floor → greedy → pending reservation
      */
     private List<DiningTable> selectTablesForGuests(List<DiningTable> tables, int guestCount, LocalDateTime reservedAt) {
         if (tables.isEmpty()) {
             return List.of();
         }
 
-        // Classify tables by priority
+        // Step 1: Classify tables by freshness
         List<DiningTable> freshTables = new ArrayList<>();
         List<DiningTable> recentlyUsedTables = new ArrayList<>();
         
@@ -495,15 +543,265 @@ public class ReservationService {
             }
         }
         
-        // Try to select from fresh tables first (highest priority)
-        List<DiningTable> selected = trySelectFromTables(freshTables, guestCount);
+        // Try fresh tables first with area-based scoring
+        List<DiningTable> selected = trySelectWithAreaScoring(freshTables, guestCount);
         if (!selected.isEmpty()) {
             return selected;
         }
         
-        // Only use recently used tables when no fresh tables available
-        // This is when overtime alert system becomes truly useful
-        return trySelectFromTables(recentlyUsedTables, guestCount);
+        // Fallback to recently used tables with area-based scoring
+        selected = trySelectWithAreaScoring(recentlyUsedTables, guestCount);
+        if (!selected.isEmpty()) {
+            return selected;
+        }
+        
+        // Final fallback: try all tables together
+        return trySelectFromTables(tables, guestCount);
+    }
+    
+    /**
+     * Attempts to select tables using area-based scoring system
+     * Scans each area, calculates score for best combo, then selects highest scoring area
+     */
+    private List<DiningTable> trySelectWithAreaScoring(List<DiningTable> tables, int guestCount) {
+        if (tables.isEmpty()) {
+            return List.of();
+        }
+
+        // Group tables by area
+        var tablesByArea = tables.stream()
+                .filter(t -> t.getArea() != null && t.getFloor() != null)
+                .collect(Collectors.groupingBy(
+                    DiningTable::getArea,
+                    Collectors.toList()
+                ));
+        
+        // Scan each area and find best combo with score
+        String bestArea = null;
+        List<DiningTable> bestCombo = List.of();
+        int bestScore = Integer.MIN_VALUE;
+        
+        for (var entry : tablesByArea.entrySet()) {
+            String area = entry.getKey();
+            List<DiningTable> areaTables = entry.getValue();
+            areaTables.sort(Comparator.comparingInt(DiningTable::getId));
+            
+            // Find best combo in this area
+            var result = findBestComboInArea(areaTables, guestCount);
+            if (!result.isEmpty()) {
+                int score = calculateAreaScore(result, guestCount);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCombo = result;
+                    bestArea = area;
+                }
+            }
+        }
+        
+        if (!bestCombo.isEmpty()) {
+            log.info("Selected {} tables in area {} with score {} for {} guests", 
+                     bestCombo.size(), bestArea, bestScore, guestCount);
+            return bestCombo;
+        }
+        
+        // Fallback: try same floor (any area)
+        var tablesByFloor = tables.stream()
+                .filter(t -> t.getFloor() != null)
+                .collect(Collectors.groupingBy(
+                    DiningTable::getFloor,
+                    Collectors.toList()
+                ));
+        
+        for (var entry : tablesByFloor.entrySet()) {
+            Integer floor = entry.getKey();
+            List<DiningTable> floorTables = entry.getValue();
+            floorTables.sort(Comparator.comparingInt(DiningTable::getId));
+            
+            List<DiningTable> combo = trySelectFromTables(floorTables, guestCount);
+            if (!combo.isEmpty()) {
+                log.info("Selected {} tables on floor {} (fallback) for {} guests", 
+                         combo.size(), floor, guestCount);
+                return combo;
+            }
+        }
+        
+        return List.of();
+    }
+    
+    /**
+     * Finds best table combination in a single area
+     * PRIORITY: Consecutive tables (A2+A3+A4) > Non-consecutive (A1+A3+A6)
+     * Tries ALL combos (1, 2, 3, 4 tables) and returns the one with HIGHEST score
+     */
+    private List<DiningTable> findBestComboInArea(List<DiningTable> areaTables, int guestCount) {
+        List<DiningTable> bestCombo = List.of();
+        int bestScore = Integer.MIN_VALUE;
+        
+        // Try single table first
+        for (DiningTable table : areaTables) {
+            if (capacitySafe(table) >= guestCount) {
+                int score = calculateAreaScore(List.of(table), guestCount);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCombo = List.of(table);
+                }
+            }
+        }
+        
+        // Try combinations of 2-5 tables
+        // PRIORITY: Try consecutive combos first (higher score due to lower ID distance)
+        for (int k = 2; k <= Math.min(MAX_TABLES_TO_COMBINE, areaTables.size()); k++) {
+            // Step 1: Try consecutive combos first
+            List<DiningTable> consecutiveCombo = findBestConsecutiveCombo(areaTables, guestCount, k);
+            if (!consecutiveCombo.isEmpty()) {
+                int score = calculateAreaScore(consecutiveCombo, guestCount);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCombo = consecutiveCombo;
+                }
+            }
+            
+            // Step 2: Try all combos (including non-consecutive) as fallback
+            List<DiningTable> anyCombo = findBestCombo(areaTables, guestCount, k);
+            if (!anyCombo.isEmpty()) {
+                int score = calculateAreaScore(anyCombo, guestCount);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCombo = anyCombo;
+                }
+            }
+        }
+        
+        return bestCombo;
+    }
+    
+    /**
+     * Finds best CONSECUTIVE table combination (e.g., A2+A3+A4, not A1+A3+A6)
+     * Only considers tables with consecutive IDs
+     */
+    private List<DiningTable> findBestConsecutiveCombo(List<DiningTable> areaTables, int guestCount, int k) {
+        if (k > areaTables.size()) {
+            return List.of();
+        }
+        
+        List<DiningTable> bestCombo = List.of();
+        int bestCapacity = Integer.MAX_VALUE;
+        
+        // Sliding window: try each consecutive sequence of k tables
+        for (int i = 0; i <= areaTables.size() - k; i++) {
+            List<DiningTable> window = areaTables.subList(i, i + k);
+            
+            // Check if truly consecutive (ID difference = 1 between adjacent tables)
+            boolean isConsecutive = true;
+            for (int j = 0; j < window.size() - 1; j++) {
+                if (window.get(j + 1).getId() - window.get(j).getId() != 1) {
+                    isConsecutive = false;
+                    break;
+                }
+            }
+            
+            if (!isConsecutive) {
+                continue;
+            }
+            
+            // Check if capacity is sufficient
+            int totalCapacity = window.stream().mapToInt(this::capacitySafe).sum();
+            if (totalCapacity >= guestCount && totalCapacity < bestCapacity) {
+                bestCapacity = totalCapacity;
+                bestCombo = new ArrayList<>(window);
+            }
+        }
+        
+        return bestCombo;
+    }
+    
+    /**
+     * Calculates area score for a table combination
+     * 
+     * PRIORITY HIERARCHY:
+     * 1. SINGLE AREA COMPLETENESS (+10000) - If one area can handle all guests, it ALWAYS wins
+     * 2. Floor preference (+2000 floor 1, +1000 floor 2)
+     * 3. Area A bonus (+500)
+     * 4. Consecutive IDs (+100 per table)
+     * 5. Single table (+300)
+     * 6. Penalties: ID distance, table count, excess capacity
+     */
+    private int calculateAreaScore(List<DiningTable> tables, int guestCount) {
+        if (tables.isEmpty()) {
+            return Integer.MIN_VALUE;
+        }
+        
+        int score = 0;
+        
+        // CRITICAL: Single area completeness bonus - HIGHEST PRIORITY
+        // If all tables are in the same area AND capacity is sufficient, this should always win
+        boolean allSameArea = tables.stream()
+                .map(DiningTable::getArea)
+                .distinct()
+                .count() == 1;
+        
+        int totalCapacity = tables.stream().mapToInt(this::capacitySafe).sum();
+        
+        if (allSameArea && totalCapacity >= guestCount) {
+            score += SINGLE_AREA_COMPLETE_BONUS;
+            log.debug("Single area bonus applied: +{} for area {}", SINGLE_AREA_COMPLETE_BONUS, tables.get(0).getArea());
+        }
+        
+        // Floor bonus
+        Integer floor = tables.get(0).getFloor();
+        if (floor != null) {
+            if (floor == 1) {
+                score += FLOOR_1_BONUS;
+            } else if (floor == 2) {
+                score += FLOOR_2_BONUS;
+            }
+        }
+        
+        // Area A bonus
+        String area = tables.get(0).getArea();
+        if ("A".equals(area)) {
+            score += AREA_A_BONUS;
+        }
+        
+        // Consecutive ID bonus - reward tables with consecutive IDs (e.g., E1, E2, E3, E4, E5)
+        if (tables.size() > 1) {
+            List<Integer> ids = tables.stream()
+                    .map(DiningTable::getId)
+                    .sorted()
+                    .collect(Collectors.toList());
+            
+            boolean allConsecutive = true;
+            for (int i = 1; i < ids.size(); i++) {
+                if (ids.get(i) != ids.get(i-1) + 1) {
+                    allConsecutive = false;
+                    break;
+                }
+            }
+            
+            if (allConsecutive) {
+                score += CONSECUTIVE_ID_BONUS * tables.size();
+                log.debug("Consecutive ID bonus applied: +{}", CONSECUTIVE_ID_BONUS * tables.size());
+            }
+        }
+        
+        // Single table bonus
+        if (tables.size() == 1) {
+            score += SINGLE_TABLE_BONUS;
+        }
+        
+        // ID distance penalty (tables far apart)
+        int minId = tables.stream().mapToInt(DiningTable::getId).min().orElse(0);
+        int maxId = tables.stream().mapToInt(DiningTable::getId).max().orElse(0);
+        score -= (maxId - minId) * ID_DISTANCE_PENALTY;
+        
+        // Table count penalty (prefer fewer tables)
+        score -= tables.size() * TABLE_COUNT_PENALTY;
+        
+        // Excess capacity penalty (avoid wasting seats)
+        int excessCapacity = Math.abs(totalCapacity - guestCount);
+        score -= excessCapacity * EXCESS_CAPACITY_PENALTY;
+        
+        return score;
     }
     
     /**

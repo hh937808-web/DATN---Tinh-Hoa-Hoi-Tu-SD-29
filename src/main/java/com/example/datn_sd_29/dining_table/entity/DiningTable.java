@@ -35,6 +35,13 @@ public class DiningTable {
     @Column(name = "table_status", length = 50)
     private String tableStatus;
 
+    @Size(max = 10)
+    @Column(name = "area", length = 10)
+    private String area;
+
+    @Column(name = "floor")
+    private Integer floor;
+
     @ColumnDefault("getdate()")
     @Column(name = "created_at")
     private Instant createdAt;
