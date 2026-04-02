@@ -44,7 +44,7 @@ public class LoginService {
             }
 
             // Generate JWT with role for employee
-            String token = jwtService.generateTokenWithRole(employee.getEmail(), employee.getRole());
+            String token = jwtService.generateTokenWithRole(employee.getEmail(), employee.getRole(), employee.getId());
             return new LoginResponse(token, employee.getEmail(), employee.getRole());
         }
 
@@ -62,7 +62,7 @@ public class LoginService {
         }
 
         // Generate JWT with USER role for customer
-        String token = jwtService.generateTokenWithRole(customer.getEmail(), "USER");
+        String token = jwtService.generateTokenWithRole(customer.getEmail(), "USER", customer.getId());
         return new LoginResponse(token, customer.getEmail(), "USER");
     }
 }
