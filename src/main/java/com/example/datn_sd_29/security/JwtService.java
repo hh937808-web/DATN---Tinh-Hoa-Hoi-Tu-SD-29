@@ -23,12 +23,14 @@ public class JwtService {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(String subject) {
+    public String generateToken(String email, Integer customerId, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + jwtExpirationMs );
 
         return Jwts.builder()
-                .subject(subject)
+                .subject(email)
+                .claim("customerId", customerId) // 🔥 THÊM
+                .claim("role", role)             // 🔥 THÊM
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(getSigningKey())
@@ -41,12 +43,13 @@ public class JwtService {
      * @param role User role (USER, ADMIN, RECEPTION, STAFF)
      * @return JWT token string
      */
-    public String generateTokenWithRole(String subject, String role) {
+    public String generateTokenWithRole(String subject, String role, Integer customerId) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
                 .subject(subject)
+                .claim("customerId", customerId) // 🔥 THÊM
                 .claim("role", role)  // Add role to JWT claims
                 .issuedAt(now)
                 .expiration(expiry)
@@ -82,5 +85,13 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    public String extractEmail(String token) {
+        return parseClaims(token).getSubject();
+    }
+
+    public Integer extractCustomerId(String token) {
+        return parseClaims(token).get("customerId", Integer.class);
     }
 }
