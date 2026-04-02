@@ -36,7 +36,7 @@ public class ProductService {
         product.setUnitPrice(request.getUnitPrice());
         product.setDescription(request.getDescription());
         product.setAvailabilityStatus(request.getAvailabilityStatus());
-
+        product.setStockQuantity(request.getStockQuantity());
         Product saved = productRepository.save(product);
 
         return new ProductResponse(saved);
@@ -60,7 +60,7 @@ public class ProductService {
         product.setUnitPrice(request.getUnitPrice());
         product.setDescription(request.getDescription());
         product.setAvailabilityStatus(request.getAvailabilityStatus());
-
+        product.setStockQuantity(request.getStockQuantity());
         Product updated = productRepository.save(product);
 
         return new ProductResponse(updated);
@@ -85,37 +85,28 @@ public class ProductService {
             ProductStatus status
     ) {
 
-        List<Product> products;
-
-        if (name != null) {
-            products = productRepository.findByProductNameContainingIgnoreCase(name);
-        }
-        else if (category != null && status != null) {
-            products = productRepository
-                    .findByProductCategoryAndAvailabilityStatus(category, status);
-        }
-        else if (category != null) {
-            products = productRepository.findByProductCategory(category);
-        }
-        else if (status != null) {
-            products = productRepository.findByAvailabilityStatus(status);
-        }
-        else {
-            products = productRepository.findAll();
-        }
-
-        return products.stream()
+        return productRepository.findAll().stream()
+                .filter(p -> name == null || p.getProductName().toLowerCase().contains(name.toLowerCase()))
+                .filter(p -> category == null || p.getProductCategory() == category)
+                .filter(p -> status == null || p.getAvailabilityStatus() == status)
                 .map(ProductResponse::new)
                 .toList();
     }
 
 
     @Transactional(readOnly = true)
-    public List<ProductResponse> sortProductsByPrice(String direction) {
+    public List<ProductResponse> sortProducts(String field, String direction) {
+
+        // map field từ FE sang DB
+        String sortField = switch (field) {
+            case "name" -> "productName";
+            case "price" -> "unitPrice";
+            default -> "id";
+        };
 
         Sort sort = direction.equalsIgnoreCase("desc")
-                ? Sort.by("unitPrice").descending()
-                : Sort.by("unitPrice").ascending();
+                ? Sort.by(sortField).descending()
+                : Sort.by(sortField).ascending();
 
         return productRepository.findAll(sort)
                 .stream()
