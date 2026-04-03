@@ -68,8 +68,6 @@ public class ProductController {
         );
     }
 
-
-
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(
             @RequestParam(required = false) String name,
@@ -88,11 +86,12 @@ public class ProductController {
 
     @GetMapping("/sort")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> sortProducts(
+            @RequestParam(defaultValue = "id") String field,
             @RequestParam(defaultValue = "asc") String direction
     ) {
 
         List<ProductResponse> products =
-                productService.sortProductsByPrice(direction);
+                productService.sortProducts(field, direction);
 
         return ResponseEntity.ok(
                 ApiResponse.success("Sort products successfully!", products)
