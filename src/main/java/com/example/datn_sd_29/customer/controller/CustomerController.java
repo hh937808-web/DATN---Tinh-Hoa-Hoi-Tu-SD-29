@@ -3,8 +3,10 @@ package com.example.datn_sd_29.customer.controller;
 import com.example.datn_sd_29.common.dto.ApiResponse;
 import com.example.datn_sd_29.customer.dto.CustomerListResponse;
 import com.example.datn_sd_29.customer.dto.CustomerProfileResponse;
+import com.example.datn_sd_29.customer.dto.CustomerResponse;
 import com.example.datn_sd_29.customer.dto.UpdateProfileRequest;
 import com.example.datn_sd_29.customer.dto.UpdateProfileResponse;
+import com.example.datn_sd_29.customer.entity.Gender;
 import com.example.datn_sd_29.customer.service.CustomerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -12,16 +14,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/customers")
+@CrossOrigin("*")
 @RequiredArgsConstructor
 public class CustomerController {
 
     private final CustomerService customerService;
 
     // ========================
-    // GET ALL CUSTOMERS (FOR ADMIN)
+    // ADMIN: GET ALL CUSTOMERS (SIMPLE LIST)
     // ========================
     @GetMapping
     public ResponseEntity<ApiResponse<List<CustomerListResponse>>> getAll() {
@@ -34,7 +38,47 @@ public class CustomerController {
     }
 
     // ========================
-    // GET PROFILE
+    // ADMIN: SEARCH CUSTOMERS
+    // ========================
+    @GetMapping("/search")
+    public ResponseEntity<List<CustomerResponse>> search(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) Gender gender,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate
+    ) {
+        return ResponseEntity.ok(
+                customerService.search(keyword, isActive, gender, startDate, endDate)
+        );
+    }
+
+    // ========================
+    // ADMIN: SORT CUSTOMERS
+    // ========================
+    @GetMapping("/sort")
+    public ResponseEntity<List<CustomerResponse>> sort(
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        return ResponseEntity.ok(customerService.getAllSorted(sortBy, direction));
+    }
+
+    // ========================
+    // ADMIN: UPDATE CUSTOMER STATUS
+    // ========================
+    @PutMapping("/{id}/status")
+    public ResponseEntity<?> updateStatus(
+            @PathVariable Integer id,
+            @RequestBody Map<String, Boolean> body
+    ) {
+        Boolean isActive = body.get("isActive");
+        customerService.updateStatus(id, isActive);
+        return ResponseEntity.ok().build();
+    }
+
+    // ========================
+    // CUSTOMER: GET PROFILE
     // ========================
     @GetMapping("/profile")
     public CustomerProfileResponse getProfile(
@@ -45,7 +89,7 @@ public class CustomerController {
     }
 
     // ========================
-    // UPDATE PROFILE
+    // CUSTOMER: UPDATE PROFILE
     // ========================
     @PutMapping("/profile")
     public UpdateProfileResponse updateProfile(

@@ -2,14 +2,20 @@ package com.example.datn_sd_29.customer.service;
 
 import com.example.datn_sd_29.customer.dto.CustomerListResponse;
 import com.example.datn_sd_29.customer.dto.CustomerProfileResponse;
+import com.example.datn_sd_29.customer.dto.CustomerResponse;
 import com.example.datn_sd_29.customer.dto.UpdateProfileRequest;
 import com.example.datn_sd_29.customer.dto.UpdateProfileResponse;
 import com.example.datn_sd_29.customer.entity.Customer;
+import com.example.datn_sd_29.customer.entity.Gender;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -20,7 +26,68 @@ public class CustomerService {
     private final JwtService jwtService;
 
     // ========================
-    // GET ALL CUSTOMERS (FOR ADMIN)
+    // ADMIN: GET ALL CUSTOMERS WITH SORT
+    // ========================
+    public List<CustomerResponse> getAllSorted(String sortBy, String direction) {
+        Sort sort = direction.equalsIgnoreCase("desc")
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
+
+        return customerRepository.findAll(sort)
+                .stream()
+                .map(CustomerResponse::new)
+                .toList();
+    }
+
+    // ========================
+    // ADMIN: SEARCH CUSTOMERS
+    // ========================
+    public List<CustomerResponse> search(String keyword, Boolean isActive, Gender gender,
+                                         String startDate, String endDate) {
+
+        // fix keyword rỗng
+        if (keyword != null && keyword.trim().isEmpty()) {
+            keyword = null;
+        }
+
+        Instant start = null;
+        Instant end = null;
+
+        if (startDate != null && !startDate.isEmpty()) {
+            start = LocalDate.parse(startDate)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant();
+        }
+
+        if (endDate != null && !endDate.isEmpty()) {
+            end = LocalDate.parse(endDate)
+                    .plusDays(1)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant();
+        }
+
+        return java.util.Optional
+                .ofNullable(customerRepository.search(keyword, isActive, gender, start, end))
+                .orElse(List.of())
+                .stream()
+                .filter(java.util.Objects::nonNull)
+                .map(CustomerResponse::new)
+                .toList();
+    }
+
+    // ========================
+    // ADMIN: UPDATE CUSTOMER STATUS
+    // ========================
+    public void updateStatus(Integer id, Boolean isActive) {
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+
+        customer.setIsActive(isActive);
+        customerRepository.save(customer);
+    }
+
+    // ========================
+    // CUSTOMER: GET ALL (SIMPLE LIST FOR ADMIN)
     // ========================
     public List<CustomerListResponse> getAll() {
         return customerRepository.findAll()
@@ -30,7 +97,7 @@ public class CustomerService {
     }
 
     // ========================
-    // GET PROFILE
+    // CUSTOMER: GET PROFILE
     // ========================
     public CustomerProfileResponse getProfile(String token) {
 
@@ -52,7 +119,7 @@ public class CustomerService {
     }
 
     // ========================
-    // UPDATE PROFILE
+    // CUSTOMER: UPDATE PROFILE
     // ========================
     public UpdateProfileResponse updateProfile(String token, UpdateProfileRequest request) {
 

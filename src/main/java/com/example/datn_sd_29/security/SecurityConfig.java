@@ -65,15 +65,20 @@ public class SecurityConfig {
                                 "/api/kitchen/**"         // Kitchen staff update status
                         ).permitAll()
                         
-                        // Public GET endpoints - Khách xem menu (không cần đăng nhập)
+                        // ========================================
+                        // CUSTOMER ENDPOINTS - Public access
+                        // ========================================
+                        .requestMatchers("/api/customers/**").permitAll()
+                        
+                        // ========================================
+                        // PUBLIC GET ENDPOINTS - Khách xem menu (không cần đăng nhập)
+                        // ========================================
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-combos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-combo-vouchers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-vouchers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/customer-vouchers/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/customers/**").permitAll()
-                        .requestMatchers(HttpMethod.PUT, "/api/customers    /**").permitAll()
                         
                         // ========================================
                         // ADMIN + RECEPTION - Dashboard & Reports
