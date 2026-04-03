@@ -39,7 +39,7 @@ public class CustomerVoucherResponse {
         this.issuedAt = voucher.getIssuedAt();
         this.expiresAt = voucher.getExpiresAt();
         this.remainingQuantity = voucher.getRemainingQuantity();
-        this.voucherStatus = voucher.getVoucherStatus();
+        this.voucherStatus = voucher.getVoucherStatus() != null ? voucher.getVoucherStatus().getDisplayName() : null;
         this.createdAt = voucher.getCreatedAt();
     }
 

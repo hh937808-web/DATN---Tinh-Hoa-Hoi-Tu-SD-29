@@ -89,23 +89,27 @@ public class ReservationService {
     public ReservationResponse reserveTable(ReservationRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         
-        // Nếu security bị tắt, bỏ qua authentication check
-        if (securityEnabled && (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null
-            || "anonymousUser".equals(auth.getPrincipal()))) {
+        // Check if user is authenticated (works in both production and development mode)
+        boolean isAuthenticated = auth != null && auth.isAuthenticated() 
+                && auth.getPrincipal() != null 
+                && !"anonymousUser".equals(auth.getPrincipal());
+        
+        // In production mode, authentication is required
+        if (securityEnabled && !isAuthenticated) {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
-        // Khi security tắt, sử dụng email mặc định hoặc tạo customer mới
+        // Get customer from JWT token if authenticated, otherwise use test account (dev mode only)
         String email;
         Customer customer;
         
-        if (securityEnabled) {
-            // Production mode: lấy email từ JWT token
+        if (isAuthenticated) {
+            // User is logged in: use email from JWT token (works in both prod and dev mode)
             email = auth.getPrincipal().toString();
             customer = customerRepository.findByEmailIgnoreCase(email)
                     .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập tài khoản!"));
         } else {
-            // Development mode: tạo hoặc tìm customer với email test
+            // No authentication: only allowed in development mode, use test account
             email = "test@example.com";
             customer = customerRepository.findByEmailIgnoreCase(email)
                     .orElseGet(() -> {

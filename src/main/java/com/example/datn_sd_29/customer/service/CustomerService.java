@@ -1,5 +1,6 @@
 package com.example.datn_sd_29.customer.service;
 
+import com.example.datn_sd_29.customer.dto.CustomerListResponse;
 import com.example.datn_sd_29.customer.dto.CustomerProfileResponse;
 import com.example.datn_sd_29.customer.dto.UpdateProfileRequest;
 import com.example.datn_sd_29.customer.dto.UpdateProfileResponse;
@@ -9,12 +10,24 @@ import com.example.datn_sd_29.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final JwtService jwtService;
+
+    // ========================
+    // GET ALL CUSTOMERS (FOR ADMIN)
+    // ========================
+    public List<CustomerListResponse> getAll() {
+        return customerRepository.findAll()
+                .stream()
+                .map(CustomerListResponse::new)
+                .toList();
+    }
 
     // ========================
     // GET PROFILE

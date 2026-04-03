@@ -1,14 +1,8 @@
 package com.example.datn_sd_29.voucher.entity;
 
 import com.example.datn_sd_29.customer.entity.Customer;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import com.example.datn_sd_29.voucher.enums.VoucherStatus;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -45,8 +39,9 @@ public class CustomerVoucher {
     @Column(name = "remaining_quantity")
     private Integer remainingQuantity;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "voucher_status", length = 20)
-    private String voucherStatus;
+    private VoucherStatus voucherStatus;
 
     @ColumnDefault("getdate()")
     @Column(name = "created_at")

@@ -18,6 +18,7 @@ public class ProductVoucherService {
 
     private final ProductVoucherRepository productVoucherRepository;
     private final ProductRepository productRepository;
+    private final VoucherCodeValidator voucherCodeValidator;
 
     // =====================
     // GET ALL
@@ -39,6 +40,20 @@ public class ProductVoucherService {
                         "Không tìm thấy Product id = " + request.getProductId()
                 ));
 
+        // FIX #10: Validate discount percent must be 1-100%
+        if (request.getDiscountPercent() != null) {
+            if (request.getDiscountPercent() < 1 || request.getDiscountPercent() > 100) {
+                throw new IllegalArgumentException("Giảm giá phải từ 1% đến 100%");
+            }
+        }
+
+        // FIX #7: Validate date range
+        if (request.getValidFrom() != null && request.getValidTo() != null) {
+            if (request.getValidTo().isBefore(request.getValidFrom())) {
+                throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu");
+            }
+        }
+
         ProductVoucher voucher = new ProductVoucher();
         
         // Voucher code generation logic:
@@ -55,6 +70,9 @@ public class ProductVoucherService {
             voucherCode = generateRandomVoucherCode();
         }
         // else: use admin's custom code as-is
+        
+        // FIX #19: Check if voucher code already exists (across all voucher types)
+        voucherCodeValidator.validateUniqueVoucherCode(voucherCode);
         
         voucher.setVoucherCode(voucherCode);
         voucher.setVoucherName(request.getVoucherName());
@@ -102,23 +120,57 @@ public class ProductVoucherService {
                         new IllegalArgumentException("ProductVoucher not found with id: " + id)
                 );
 
-        Boolean newStatus = request.getIsActive();
-
-        if (voucher.getIsActive() && Boolean.FALSE.equals(newStatus)) {
-            throw new IllegalArgumentException(
-                    "Không được cập nhật trạng thái từ ACTIVE sang INACTIVE."
-            );
+        // FIX #10: Validate discount percent must be 1-100%
+        if (request.getDiscountPercent() != null) {
+            if (request.getDiscountPercent() < 1 || request.getDiscountPercent() > 100) {
+                throw new IllegalArgumentException("Giảm giá phải từ 1% đến 100%");
+            }
         }
+
+        // FIX #7: Validate date range
+        if (request.getValidFrom() != null && request.getValidTo() != null) {
+            if (request.getValidTo().isBefore(request.getValidFrom())) {
+                throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu");
+            }
+        }
+
+        // FIX #8: REMOVED - Allow admin to deactivate voucher anytime
+        // Admin có quyền vô hiệu hóa voucher bất cứ lúc nào (đồng nhất với CustomerVoucher)
 
         voucher.setVoucherCode(request.getVoucherCode());
         voucher.setVoucherName(request.getVoucherName());
         voucher.setDiscountPercent(request.getDiscountPercent());
-        voucher.setRemainingQuantity(request.getRemainingQuantity());
+        
+        // FIX #9: Validate remaining_quantity and auto-update status
+        if (request.getRemainingQuantity() != null) {
+            if (request.getRemainingQuantity() < 0) {
+                throw new IllegalArgumentException("Số lượt sử dụng không được âm");
+            }
+            voucher.setRemainingQuantity(request.getRemainingQuantity());
+            
+            // Auto-update status when remaining_quantity = 0
+            if (request.getRemainingQuantity() == 0) {
+                voucher.setIsActive(false);
+            }
+        }
+        
         voucher.setValidFrom(request.getValidFrom());
         voucher.setValidTo(request.getValidTo());
 
+        // Allow admin to manually activate voucher (if not used up)
+        Boolean newStatus = request.getIsActive();
         if (!voucher.getIsActive() && Boolean.TRUE.equals(newStatus)) {
-            voucher.setIsActive(true);
+            // Only allow activation if voucher still has remaining uses
+            if (voucher.getRemainingQuantity() != null && voucher.getRemainingQuantity() > 0) {
+                voucher.setIsActive(true);
+            } else {
+                throw new IllegalArgumentException("Không thể kích hoạt voucher đã hết lượt sử dụng");
+            }
+        }
+        
+        // Allow admin to manually deactivate voucher
+        if (voucher.getIsActive() && Boolean.FALSE.equals(newStatus)) {
+            voucher.setIsActive(false);
         }
 
         return new ProductVoucherResponse(

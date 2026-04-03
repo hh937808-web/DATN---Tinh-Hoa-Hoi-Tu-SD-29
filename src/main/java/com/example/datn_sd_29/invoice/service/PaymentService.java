@@ -23,6 +23,7 @@ import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.voucher.entity.CustomerVoucher;
 import com.example.datn_sd_29.voucher.entity.ProductVoucher;
 import com.example.datn_sd_29.voucher.entity.ProductComboVoucher;
+import com.example.datn_sd_29.voucher.enums.VoucherStatus;
 import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
@@ -421,7 +422,7 @@ public class PaymentService {
                     .findByIdAndCustomerId(request.getCustomerVoucherId(), customer.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
 
-            if (!"ACTIVE".equalsIgnoreCase(customerVoucher.getVoucherStatus())
+            if (!VoucherStatus.HOAT_DONG.equals(customerVoucher.getVoucherStatus())
                     || customerVoucher.getRemainingQuantity() == null
                     || customerVoucher.getRemainingQuantity() < 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher is not available");
@@ -600,12 +601,16 @@ public class PaymentService {
         }
 
         if (customerVoucher != null) {
-            customerVoucher.setVoucherStatus("USED");
+            // Decrease remaining uses
             int remain = customerVoucher.getRemainingQuantity() == null ? 0 : customerVoucher.getRemainingQuantity();
             customerVoucher.setRemainingQuantity(Math.max(0, remain - 1));
-            if (customerVoucher.getRemainingQuantity() != null && customerVoucher.getRemainingQuantity() <= 0) {
-                customerVoucher.setVoucherStatus("INACTIVE");
+            
+            // Update status based on remaining uses
+            if (customerVoucher.getRemainingQuantity() <= 0) {
+                customerVoucher.setVoucherStatus(VoucherStatus.DA_DUNG);
             }
+            // If remaining > 0, keep status as HOAT_DONG (don't change it)
+            
             customerVoucherRepository.save(customerVoucher);
 
             InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
@@ -618,6 +623,12 @@ public class PaymentService {
         // Decrement remaining quantity and save Product vouchers
         for (ProductVoucher pv : appliedProductVouchers) {
             pv.setRemainingQuantity(pv.getRemainingQuantity() - 1);
+            
+            // FIX #11: Auto-update is_active when remaining_quantity = 0
+            if (pv.getRemainingQuantity() <= 0) {
+                pv.setIsActive(false);
+            }
+            
             productVoucherRepository.save(pv);
             
             InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
@@ -630,6 +641,12 @@ public class PaymentService {
         // Decrement remaining quantity and save Combo vouchers
         for (ProductComboVoucher pcv : appliedComboVouchers) {
             pcv.setRemainingQuantity(pcv.getRemainingQuantity() - 1);
+            
+            // FIX #11: Auto-update is_active when remaining_quantity = 0
+            if (pcv.getRemainingQuantity() <= 0) {
+                pcv.setIsActive(false);
+            }
+            
             productComboVoucherRepository.save(pcv);
             
             InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
@@ -753,13 +770,13 @@ public class PaymentService {
                 if (cv.getRemainingQuantity() == null || cv.getRemainingQuantity() <= 0) {
                     status = "USED";
                     isActive = false;
-                } else if ("USED".equalsIgnoreCase(cv.getVoucherStatus())) {
+                } else if (VoucherStatus.DA_DUNG.equals(cv.getVoucherStatus())) {
                     status = "USED";
                     isActive = false;
                 } else if (isExpired) {
                     status = "EXPIRED";
                     isActive = false;
-                } else if ("ACTIVE".equalsIgnoreCase(cv.getVoucherStatus())) {
+                } else if (VoucherStatus.HOAT_DONG.equals(cv.getVoucherStatus())) {
                     status = "ACTIVE";
                     isActive = true;
                 } else {

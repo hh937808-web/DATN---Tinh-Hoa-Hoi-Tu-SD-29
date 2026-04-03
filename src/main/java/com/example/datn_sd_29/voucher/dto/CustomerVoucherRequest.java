@@ -6,8 +6,19 @@ import java.time.LocalDate;
 
 public class CustomerVoucherRequest {
 
-    @NotNull(message = "Personal voucher id is required")
+    // Option 1: From template (personalVoucherId required)
     private Integer personalVoucherId;
+
+    // Option 2: Direct creation (voucherCode, voucherName, discountPercent required)
+    @Size(max = 8, message = "Mã voucher tối đa 8 ký tự")
+    private String voucherCode;
+    
+    @Size(max = 50, message = "Tên voucher tối đa 50 ký tự")
+    private String voucherName;
+    
+    @Min(value = 1, message = "Giảm giá phải >= 1%")
+    @Max(value = 100, message = "Giảm giá không được vượt quá 100%")
+    private Integer discountPercent;
 
     @NotNull(message = "Customer id is required")
     private Integer customerId;
@@ -27,6 +38,30 @@ public class CustomerVoucherRequest {
 
     public void setPersonalVoucherId(Integer personalVoucherId) {
         this.personalVoucherId = personalVoucherId;
+    }
+
+    public String getVoucherCode() {
+        return voucherCode;
+    }
+
+    public void setVoucherCode(String voucherCode) {
+        this.voucherCode = voucherCode;
+    }
+
+    public String getVoucherName() {
+        return voucherName;
+    }
+
+    public void setVoucherName(String voucherName) {
+        this.voucherName = voucherName;
+    }
+
+    public Integer getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public void setDiscountPercent(Integer discountPercent) {
+        this.discountPercent = discountPercent;
     }
 
     public Integer getCustomerId() {
