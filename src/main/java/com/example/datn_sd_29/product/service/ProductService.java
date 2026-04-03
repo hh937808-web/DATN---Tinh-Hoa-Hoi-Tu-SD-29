@@ -49,12 +49,6 @@ public class ProductService {
                         new IllegalArgumentException("Product not found with id: " + id)
                 );
 
-        if (request.getAvailabilityStatus() == ProductStatus.DISCONTINUED) {
-            throw new IllegalArgumentException(
-                    "Không được cập nhật trạng thái DISCONTINUED khi update product"
-            );
-        }
-
         product.setProductName(request.getProductName());
         product.setProductCategory(request.getProductCategory());
         product.setUnitPrice(request.getUnitPrice());
