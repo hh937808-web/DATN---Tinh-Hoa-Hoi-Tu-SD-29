@@ -117,6 +117,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/reception/payment/**").hasRole("RECEPTION")
                         .requestMatchers("/api/walk-in/**").hasRole("RECEPTION")
                         .requestMatchers("/api/reservation/all").hasRole("RECEPTION")  // Xem tất cả đặt bàn
+                        .requestMatchers("/api/reservation/pending").hasRole("RECEPTION")  // Xem pending reservations
+                        .requestMatchers("/api/reservation/*/confirm").hasRole("RECEPTION")  // Xác nhận đặt bàn
+                        .requestMatchers("/api/reservation/*/alternative-tables").hasRole("RECEPTION")  // Xem bàn thay thế
+                        .requestMatchers("/api/reservation/*/recommended-tables").hasRole("RECEPTION")  // Xem bàn đề xuất
+                        .requestMatchers("/api/reservation/*/reassign-tables").hasRole("RECEPTION")  // Đổi bàn
+                        .requestMatchers("/api/reservation/*/check-in").hasRole("RECEPTION")  // Check-in
                         
                         // ========================================
                         // STAFF + RECEPTION - Overtime Alerts

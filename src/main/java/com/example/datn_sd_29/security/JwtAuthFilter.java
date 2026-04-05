@@ -33,12 +33,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         // Nếu security bị tắt, bỏ qua hoàn toàn JWT authentication
         if (!securityEnabled) {
-            System.out.println("🔓 Security DISABLED - Allowing request: " + request.getRequestURI());
+            log.debug("Security DISABLED - Allowing request: {}", request.getRequestURI());
             filterChain.doFilter(request, response);
             return;
         }
 
-        System.out.println("🔒 Security ENABLED - Checking JWT for: " + request.getRequestURI());
+        log.debug("Security ENABLED - Checking JWT for: {}", request.getRequestURI());
         
         String path = request.getRequestURI();
         

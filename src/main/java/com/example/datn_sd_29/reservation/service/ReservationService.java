@@ -23,6 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -50,11 +51,11 @@ public class ReservationService {
 
     private static final int RESERVATION_DURATION_MINUTES = 90;
     private static final int PRE_RESERVE_BUFFER_MINUTES = 30;
-    private static final int CLEANUP_BUFFER_MINUTES = 30; // Thời gian dọn dẹp sau khi khách ăn xong
-    private static final int FUTURE_RESERVATION_CHECK_HOURS = 3; // Check future reservations within 3 hours
-    private static final int CHECK_IN_EARLY_BUFFER_MINUTES = 60; // Allow check-in up to 60 minutes early
-    private static final int CHECK_IN_LATE_BUFFER_MINUTES = 30; // Allow check-in up to 30 minutes late
-    private static final int MAX_TABLES_TO_COMBINE = 5; // Allow E1-E5 combination (5 tables)
+    private static final int CLEANUP_BUFFER_MINUTES = 30;
+    private static final int FUTURE_RESERVATION_CHECK_HOURS = 3;
+    private static final int CHECK_IN_EARLY_BUFFER_MINUTES = 60;
+    private static final int CHECK_IN_LATE_BUFFER_MINUTES = 30;
+    private static final int MAX_TABLES_TO_COMBINE = 5;
     private static final Set<String> ACTIVE_STATUSES = Set.of("RESERVED", "CONFIRMED", "IN_PROGRESS");
     private static final Set<String> PROMOTION_OPTIONS = Set.of(
             "Ưu đãi sinh nhật 10% tổng hóa đơn",
@@ -63,15 +64,15 @@ public class ReservationService {
     );
     
     // Area-based scoring constants
-    private static final int SINGLE_AREA_COMPLETE_BONUS = 10000; // CRITICAL: Highest priority - one area can handle all guests
+    private static final int SINGLE_AREA_COMPLETE_BONUS = 10000;
     private static final int FLOOR_1_BONUS = 2000;
     private static final int FLOOR_2_BONUS = 1000;
     private static final int AREA_A_BONUS = 500;
     private static final int SINGLE_TABLE_BONUS = 300;
-    private static final int CONSECUTIVE_ID_BONUS = 50; // Reduced from 100 - don't over-prioritize consecutive IDs
-    private static final int ID_DISTANCE_PENALTY = 30; // Reduced from 50 - allow some distance if it saves capacity
-    private static final int TABLE_COUNT_PENALTY = 50; // Increased from 20 - strongly prefer fewer tables
-    private static final int EXCESS_CAPACITY_PENALTY = 10; // Increased from 2 - strongly penalize wasted seats
+    private static final int CONSECUTIVE_ID_BONUS = 50;
+    private static final int ID_DISTANCE_PENALTY = 30;
+    private static final int TABLE_COUNT_PENALTY = 50;
+    private static final int EXCESS_CAPACITY_PENALTY = 10;
 
     public List<AvailableTableResponse> findAvailableTables(LocalDateTime reservedAt, Integer guestCount) {
         List<DiningTable> available = getAvailableDiningTables(reservedAt, guestCount);
@@ -139,28 +140,7 @@ public class ReservationService {
             throw new IllegalArgumentException("Guest count must be greater than 0");
         }
 
-        List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
-        List<DiningTable> selectedTables = selectTablesForGuests(availableTables, guestCount, reservedAt);
-        
-        // Nếu không tìm được bàn, tạo Pending Reservation
-        boolean isPendingReservation = selectedTables.isEmpty();
-        if (isPendingReservation) {
-            log.info("No tables available for {} guests at {}. Creating pending reservation.", 
-                     guestCount, reservedAt);
-        }
-
-        // Lock tables to prevent race condition (pessimistic write lock)
-        // Skip locking if pending reservation (no tables assigned)
-        if (!isPendingReservation) {
-            List<Integer> tableIds = selectedTables.stream()
-                    .map(DiningTable::getId)
-                    .collect(Collectors.toList());
-            diningTableRepository.lockTablesForReservation(tableIds);
-
-            // Validate 120-minute gap from existing reservations (Requirements 6.1, 6.2, 6.3, 6.4, 6.5)
-            validateReservationGap(selectedTables, reservedAt);
-        }
-
+        // NEW WORKFLOW: ALWAYS create PENDING_CONFIRMATION, do NOT auto-assign tables
         Invoice invoice = new Invoice();
         invoice.setCustomer(customer);
 
@@ -169,47 +149,22 @@ public class ReservationService {
         invoice.setEmployee(emp);
 
         invoice.setInvoiceChannel("ONLINE");
-        
-        // Set status based on whether tables are assigned
-        if (isPendingReservation) {
-            invoice.setInvoiceStatus("PENDING_CONFIRMATION");
-            invoice.setReservationNote(
-                (request.getNote() != null ? request.getNote() + " | " : "") +
-                "Nhà hàng đang kín, nhân viên sẽ liên hệ xác nhận"
-            );
-        } else {
-            invoice.setInvoiceStatus("RESERVED");
-            invoice.setReservationNote(request.getNote());
-        }
-        
+        invoice.setInvoiceStatus("PENDING_CONFIRMATION");
+        invoice.setReservationNote(request.getNote());
         invoice.setReservationCode("RSV-" + System.currentTimeMillis());
         invoice.setInvoiceCode("INV-" + UUID.randomUUID());
-
         invoice.setReservedAt(reservedAt);
         invoice.setGuestCount(guestCount);
         invoice.setPromotionType(request.getPromotionType());
         invoice.setFoodNote(request.getFoodNote());
 
         invoice = invoiceRepository.save(invoice);
+        
+        log.info("Created PENDING_CONFIRMATION reservation {} for {} guests at {}", 
+                 invoice.getReservationCode(), guestCount, reservedAt);
 
-        // Only assign tables if not pending
-        if (!isPendingReservation) {
-            for (DiningTable table : selectedTables) {
-                InvoiceDiningTable idt = new InvoiceDiningTable();
-                idt.setInvoice(invoice);
-                idt.setDiningTable(table);
-                invoiceDiningTableRepository.save(idt);
-            }
-
-            // Broadcast RESERVED status via WebSocket
-            List<Integer> tableIds = selectedTables.stream()
-                    .map(DiningTable::getId)
-                    .collect(Collectors.toList());
-            tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
-        }
-
-        List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
-        return buildReservationResponse(invoice, customer, tables);
+        // Return response WITHOUT tables (customer-facing)
+        return buildReservationResponse(invoice, customer, List.of());
     }
 
     public ReservationResponse getReservationByCode(String reservationCode) {
@@ -224,15 +179,11 @@ public class ReservationService {
         Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
                 .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));
 
-        List<InvoiceDiningTable> links =
-                invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
-
-        List<DiningTable> tables = links.stream()
-                .map(InvoiceDiningTable::getDiningTable)
-                .collect(Collectors.toList());
-
         Customer customer = invoice.getCustomer();
-        return buildReservationResponse(invoice, customer, toTableInfos(tables));
+        
+        // Customer-facing: NEVER show tables (internal information only)
+        // Tables are only visible to reception staff via internal APIs
+        return buildReservationResponse(invoice, customer, List.of());
     }
 
     public ReservationResponse checkInReservation(String reservationCode) {
@@ -240,13 +191,25 @@ public class ReservationService {
                 .orElseThrow(() -> new IllegalArgumentException("Reservation not found"));
 
         String status = invoice.getInvoiceStatus();
-        if (status == null || "CANCELLED".equals(status) || "NO_SHOW".equals(status)) {
-            throw new IllegalArgumentException("Reservation is not valid for check-in");
+        
+        // Only allow check-in for RESERVED status
+        if (!"RESERVED".equals(status)) {
+            if ("PENDING_CONFIRMATION".equals(status)) {
+                throw new IllegalArgumentException("Đặt bàn chưa được xác nhận. Vui lòng xác nhận trước khi check-in.");
+            }
+            if ("CANCELLED".equals(status) || "NO_SHOW".equals(status)) {
+                throw new IllegalArgumentException("Đặt bàn đã bị hủy hoặc không hợp lệ");
+            }
+            throw new IllegalArgumentException("Trạng thái đặt bàn không hợp lệ để check-in");
         }
 
         // Get tables for this reservation
         List<InvoiceDiningTable> links =
                 invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+
+        if (links.isEmpty()) {
+            throw new IllegalArgumentException("Đặt bàn chưa được xếp bàn. Vui lòng xác nhận trước.");
+        }
 
         List<DiningTable> tables = links.stream()
                 .map(InvoiceDiningTable::getDiningTable)
@@ -331,17 +294,12 @@ public class ReservationService {
         if (customer == null || customer.getEmail() == null) {
             throw new IllegalArgumentException("Customer email not found");
         }
-        if (!email.equalsIgnoreCase(customer.getEmail())) {
+        if (securityEnabled && !email.equalsIgnoreCase(customer.getEmail())) {
             throw new IllegalArgumentException("Không có quyền gửi email cho đặt bàn này");
         }
 
-        List<InvoiceDiningTable> links =
-                invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
-
-        List<String> tableCodes = links.stream()
-                .map(link -> "MB-" + link.getDiningTable().getId())
-                .collect(Collectors.toList());
-
+        // Customer-facing email: NEVER include table codes
+        // Tables are internal information only visible to reception staff
         emailService.sendReservationDetailsEmail(
                 customer.getEmail(),
                 invoice.getReservationCode(),
@@ -349,8 +307,10 @@ public class ReservationService {
                 invoice.getGuestCount(),
                 invoice.getPromotionType(),
                 invoice.getReservationNote(),
-                tableCodes
+                List.of() // Empty list - no table codes for customer
         );
+        
+        log.info("Sent customer-facing reservation email to {} (no table information)", customer.getEmail());
     }
 
     public List<ReservationListResponse> findReservationsByPhoneNumber(String phoneNumber) {
@@ -399,11 +359,14 @@ public class ReservationService {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đặt bàn"));
 
-        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
-            throw new IllegalArgumentException("Chỉ có thể hủy đặt bàn có trạng thái RESERVED");
+        String status = invoice.getInvoiceStatus();
+        
+        // Allow cancellation for PENDING_CONFIRMATION and RESERVED only
+        if (!"PENDING_CONFIRMATION".equals(status) && !"RESERVED".equals(status)) {
+            throw new IllegalArgumentException("Chỉ có thể hủy đặt bàn có trạng thái PENDING_CONFIRMATION hoặc RESERVED");
         }
 
-        // Get tables before cancelling
+        // Get tables before cancelling (may be empty for PENDING_CONFIRMATION)
         List<InvoiceDiningTable> links = 
             invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
         
@@ -415,9 +378,13 @@ public class ReservationService {
         invoice.setInvoiceStatus("CANCELLED");
         invoiceRepository.save(invoice);
 
-        // Broadcast table status change to AVAILABLE
+        // Broadcast table status change to AVAILABLE only if tables were assigned
         if (!tableIds.isEmpty()) {
+            diningTableRepository.updateTableStatusByIdIn(tableIds, "AVAILABLE");
             tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
+            log.info("Released {} tables for cancelled reservation {}", tableIds.size(), invoice.getReservationCode());
+        } else {
+            log.info("Cancelled pending reservation {} (no tables assigned)", invoice.getReservationCode());
         }
     }
 
@@ -456,6 +423,93 @@ public class ReservationService {
                     );
                 })
                 .collect(Collectors.toList());
+    }
+
+    public List<ReservationListResponse> findPendingConfirmationReservations() {
+        List<Invoice> invoices = invoiceRepository.findPendingConfirmationReservations();
+        
+        return invoices.stream()
+                .map(invoice -> {
+                    Customer customer = invoice.getCustomer();
+                    return new ReservationListResponse(
+                            invoice.getId(),
+                            invoice.getReservationCode(),
+                            invoice.getReservedAt(),
+                            invoice.getGuestCount(),
+                            customer != null ? customer.getFullName() : "",
+                            customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getInvoiceStatus(),
+                            invoice.getPromotionType(),
+                            invoice.getReservationNote(),
+                            invoice.getFoodNote(),
+                            List.of() // No tables assigned yet
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ReservationResponse confirmReservation(String reservationCode) {
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đặt bàn"));
+
+        if (!"PENDING_CONFIRMATION".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalArgumentException("Chỉ có thể xác nhận đặt bàn có trạng thái PENDING_CONFIRMATION");
+        }
+
+        LocalDateTime reservedAt = invoice.getReservedAt();
+        Integer guestCount = invoice.getGuestCount();
+
+        // Get all available tables (no area filter - use full system)
+        List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
+
+        if (availableTables.isEmpty()) {
+            throw new IllegalArgumentException(
+                String.format("Không có bàn trống nào cho %d khách vào thời gian %s. Vui lòng chọn thời gian khác hoặc liên hệ khách hàng.",
+                    guestCount, reservedAt)
+            );
+        }
+
+        // Use existing algorithm to select best tables across entire system
+        List<DiningTable> selectedTables = selectTablesForGuests(availableTables, guestCount, reservedAt);
+
+        if (selectedTables.isEmpty()) {
+            throw new IllegalArgumentException(
+                String.format("Không thể xếp bàn cho %d khách. Vui lòng liên hệ khách hàng để điều chỉnh số lượng hoặc thời gian.",
+                    guestCount)
+            );
+        }
+
+        // Lock tables
+        List<Integer> tableIds = selectedTables.stream()
+                .map(DiningTable::getId)
+                .collect(Collectors.toList());
+        diningTableRepository.lockTablesForReservation(tableIds);
+
+        // Validate 120-minute gap
+        validateReservationGap(selectedTables, reservedAt);
+
+        // Assign tables
+        for (DiningTable table : selectedTables) {
+            InvoiceDiningTable idt = new InvoiceDiningTable();
+            idt.setInvoice(invoice);
+            idt.setDiningTable(table);
+            invoiceDiningTableRepository.save(idt);
+        }
+
+        // Update invoice status to RESERVED
+        invoice.setInvoiceStatus("RESERVED");
+        invoice = invoiceRepository.save(invoice);
+
+        // Broadcast RESERVED status via WebSocket
+        tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "RESERVED");
+
+        log.info("Confirmed reservation {} with {} tables automatically selected", 
+                 reservationCode, selectedTables.size());
+
+        Customer customer = invoice.getCustomer();
+        List<ReservationResponse.TableInfo> tables = toTableInfos(selectedTables);
+        return buildReservationResponse(invoice, customer, tables);
     }
 
     private ReservationResponse buildReservationResponse(
@@ -992,6 +1046,10 @@ public class ReservationService {
      * Requirements 6.1, 6.2, 6.3, 6.4, 6.5
      */
     private void validateReservationGap(List<DiningTable> selectedTables, LocalDateTime newReservedAt) {
+        validateReservationGap(selectedTables, newReservedAt, null);
+    }
+
+    private void validateReservationGap(List<DiningTable> selectedTables, LocalDateTime newReservedAt, Integer excludeInvoiceId) {
         LocalDateTime newEndTime = newReservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
         
         for (DiningTable table : selectedTables) {
@@ -999,6 +1057,11 @@ public class ReservationService {
             List<Invoice> existingReservations = invoiceRepository.findReservedReservationsByTableId(table.getId());
 
             for (Invoice existingReservation : existingReservations) {
+                // Skip validation for the invoice being reassigned
+                if (excludeInvoiceId != null && existingReservation.getId().equals(excludeInvoiceId)) {
+                    continue;
+                }
+                
                 LocalDateTime existingReservedAt = existingReservation.getReservedAt();
                 LocalDateTime existingEndTime = existingReservedAt.plusMinutes(RESERVATION_DURATION_MINUTES);
                 
@@ -1048,5 +1111,194 @@ public class ReservationService {
                 }
             }
         }
+    }
+
+    /**
+     * Get available tables for reassignment of a RESERVED reservation.
+     * Returns all available tables that can accommodate the guest count.
+     */
+    public List<DiningTable> getAvailableTablesForReassignment(String reservationCode) {
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found: " + reservationCode));
+
+        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalStateException("Can only get available tables for RESERVED reservations");
+        }
+
+        LocalDateTime reservedAt = invoice.getReservedAt();
+        Integer guestCount = invoice.getGuestCount();
+
+        // Get all available tables for this time slot
+        List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
+        
+        // Also include current assigned tables (so staff can deselect/reselect them)
+        List<InvoiceDiningTable> currentAssignments = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        List<Integer> currentTableIds = currentAssignments.stream()
+                .map(idt -> idt.getDiningTable().getId())
+                .collect(Collectors.toList());
+        
+        // Add current tables if not already in available list
+        if (!currentTableIds.isEmpty()) {
+            List<DiningTable> currentTables = diningTableRepository.findAllById(currentTableIds);
+            for (DiningTable currentTable : currentTables) {
+                if (availableTables.stream().noneMatch(t -> t.getId().equals(currentTable.getId()))) {
+                    availableTables.add(currentTable);
+                }
+            }
+        }
+        
+        return availableTables;
+    }
+
+    /**
+     * Get recommended tables for a reservation based on guest count and optional area filter.
+     * Returns the best table combination using the existing selection algorithm.
+     */
+    public List<DiningTable> getRecommendedTablesForReassignment(String reservationCode, String area) {
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found: " + reservationCode));
+
+        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalStateException("Can only get recommended tables for RESERVED reservations");
+        }
+
+        LocalDateTime reservedAt = invoice.getReservedAt();
+        Integer guestCount = invoice.getGuestCount();
+
+        // Get all available tables
+        List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
+
+        // Filter by area if specified
+        if (area != null && !area.isEmpty()) {
+            availableTables = availableTables.stream()
+                    .filter(table -> area.equals(table.getArea()))
+                    .collect(Collectors.toList());
+        }
+
+        if (availableTables.isEmpty()) {
+            return List.of();
+        }
+
+        // Use existing algorithm to select best tables
+        return selectTablesForGuests(availableTables, guestCount, reservedAt);
+    }
+
+    /**
+     * Get alternative table options for a RESERVED reservation.
+     * Returns multiple table combinations that can accommodate the guest count.
+     */
+    public List<List<DiningTable>> getAlternativeTablesForReservation(String reservationCode) {
+        log.info("Getting alternative tables for reservation: {}", reservationCode);
+        
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found: " + reservationCode));
+
+        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalStateException("Can only get alternative tables for RESERVED reservations");
+        }
+
+        LocalDateTime reservedAt = invoice.getReservedAt();
+        Integer guestCount = invoice.getGuestCount();
+        
+        log.info("Reservation details - reservedAt: {}, guestCount: {}", reservedAt, guestCount);
+
+        // Get all available tables for this time slot
+        List<DiningTable> availableTables = getAvailableDiningTables(reservedAt, guestCount);
+        
+        log.info("Found {} available tables", availableTables.size());
+
+        if (availableTables.isEmpty()) {
+            log.warn("No available tables found for reservation {}", reservationCode);
+            return List.of();
+        }
+
+        // Generate multiple table combinations
+        List<List<DiningTable>> alternatives = new ArrayList<>();
+
+        // Try to get up to 3 different combinations
+        List<DiningTable> option1 = selectTablesForGuests(availableTables, guestCount, reservedAt);
+        if (!option1.isEmpty()) {
+            alternatives.add(option1);
+            log.info("Option 1: {} tables", option1.size());
+            
+            // Remove used tables and try again for option 2
+            List<DiningTable> remainingTables = new ArrayList<>(availableTables);
+            remainingTables.removeAll(option1);
+            
+            if (!remainingTables.isEmpty()) {
+                List<DiningTable> option2 = selectTablesForGuests(remainingTables, guestCount, reservedAt);
+                if (!option2.isEmpty()) {
+                    alternatives.add(option2);
+                    log.info("Option 2: {} tables", option2.size());
+                    
+                    // Try for option 3
+                    remainingTables.removeAll(option2);
+                    if (!remainingTables.isEmpty()) {
+                        List<DiningTable> option3 = selectTablesForGuests(remainingTables, guestCount, reservedAt);
+                        if (!option3.isEmpty()) {
+                            alternatives.add(option3);
+                            log.info("Option 3: {} tables", option3.size());
+                        }
+                    }
+                }
+            }
+        }
+
+        log.info("Returning {} alternative options for reservation {}", alternatives.size(), reservationCode);
+        return alternatives;
+    }
+
+    /**
+     * Reassign tables for a RESERVED reservation.
+     * Removes old table assignments and creates new ones.
+     */
+    @Transactional
+    public ReservationResponse reassignReservationTables(String reservationCode, List<Integer> newTableIds) {
+        Invoice invoice = invoiceRepository.findByReservationCode(reservationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found: " + reservationCode));
+
+        if (!"RESERVED".equals(invoice.getInvoiceStatus())) {
+            throw new IllegalStateException("Can only reassign tables for RESERVED reservations");
+        }
+
+        if (newTableIds == null || newTableIds.isEmpty()) {
+            throw new IllegalArgumentException("New table IDs cannot be empty");
+        }
+
+        // Validate new tables exist and are available
+        List<DiningTable> newTables = new ArrayList<>();
+        for (Integer tableId : newTableIds) {
+            DiningTable table = diningTableRepository.findById(tableId)
+                    .orElseThrow(() -> new IllegalArgumentException("Table not found: " + tableId));
+            
+            if (!isTableServiceable(table)) {
+                throw new IllegalStateException("Table " + table.getTableName() + " is not serviceable");
+            }
+            
+            newTables.add(table);
+        }
+
+        // Validate no conflicts with new tables (exclude current invoice from validation)
+        validateReservationGap(newTables, invoice.getReservedAt(), invoice.getId());
+
+        // Remove old table assignments
+        List<InvoiceDiningTable> oldLinks = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
+        invoiceDiningTableRepository.deleteAll(oldLinks);
+
+        // Create new table assignments
+        for (DiningTable table : newTables) {
+            InvoiceDiningTable link = new InvoiceDiningTable();
+            link.setInvoice(invoice);
+            link.setDiningTable(table);
+            link.setCreatedAt(Instant.now());
+            invoiceDiningTableRepository.save(link);
+        }
+
+        // Broadcast table status update via WebSocket
+        tableStatusBroadcastService.broadcastTableStatusChange(newTableIds, "RESERVED");
+
+        // Return updated reservation response
+        Customer customer = invoice.getCustomer();
+        return buildReservationResponse(invoice, customer, toTableInfos(newTables));
     }
 }
