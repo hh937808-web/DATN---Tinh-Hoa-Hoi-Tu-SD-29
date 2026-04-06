@@ -44,14 +44,29 @@ public class KitchenService {
 
             Integer tableId = table.getId();
 
-            map.putIfAbsent(tableId,
-                    new KitchenTableGroupResponse(
-                            tableId,
-                            table.getTableName(),
-                            new ArrayList<>(),
-                            0
-                    )
-            );
+            if (!map.containsKey(tableId)) {
+                // Lấy thông tin từ invoice
+                var invoice = item.getInvoice();
+                String customerName = "Khách vãng lai";
+                if (invoice != null && invoice.getCustomer() != null) {
+                    var customer = invoice.getCustomer();
+                    customerName = customer.getFullName() != null ? customer.getFullName() : "Khách vãng lai";
+                }
+                
+                Integer guestCount = invoice != null && invoice.getGuestCount() != null 
+                    ? invoice.getGuestCount() 
+                    : 0;
+                
+                map.put(tableId, new KitchenTableGroupResponse(
+                    tableId,
+                    table.getTableName(),
+                    customerName,
+                    guestCount,
+                    java.math.BigDecimal.ZERO, // Sẽ tính sau
+                    new ArrayList<>(),
+                    0
+                ));
+            }
 
             String itemName = "PRODUCT".equals(item.getItemType())
                     ? item.getProduct().getProductName()
@@ -66,6 +81,13 @@ public class KitchenService {
             );
 
             map.get(tableId).getItems().add(response);
+            
+            // Tính tổng tiền (chỉ tính món chưa CANCELLED)
+            if (item.getStatus() != InvoiceItemStatus.CANCELLED && item.getUnitPrice() != null) {
+                var currentTotal = map.get(tableId).getTotalAmount();
+                var itemTotal = item.getUnitPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity()));
+                map.get(tableId).setTotalAmount(currentTotal.add(itemTotal));
+            }
         }
 
         return new ArrayList<>(map.values());
@@ -112,7 +134,7 @@ public class KitchenService {
 
     // ================= CANCEL =================
     @Transactional
-    public void cancelItem(Integer id) {
+    public void cancelItem(Integer id, Integer quantityToCancel) {
 
         InvoiceItem item = getItemOrThrow(id);
 
@@ -120,7 +142,27 @@ public class KitchenService {
             throw new RuntimeException("Only ORDERED items can be cancelled");
         }
 
-        item.setStatus(InvoiceItemStatus.CANCELLED);
+        // Nếu không truyền quantityToCancel hoặc >= quantity hiện tại → hủy toàn bộ
+        if (quantityToCancel == null || quantityToCancel >= item.getQuantity()) {
+            item.setStatus(InvoiceItemStatus.CANCELLED);
+            return;
+        }
+
+        // Validate quantityToCancel
+        if (quantityToCancel < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity to cancel must be >= 1");
+        }
+
+        // Giảm quantity
+        int newQuantity = item.getQuantity() - quantityToCancel;
+        
+        if (newQuantity <= 0) {
+            // Nếu hủy hết → set status CANCELLED
+            item.setStatus(InvoiceItemStatus.CANCELLED);
+        } else {
+            // Còn lại → giảm quantity, giữ nguyên status ORDERED
+            item.setQuantity(newQuantity);
+        }
     }
 
     // ================= COMMON =================

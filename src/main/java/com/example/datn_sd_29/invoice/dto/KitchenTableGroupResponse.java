@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -12,6 +13,9 @@ import java.util.List;
 public class KitchenTableGroupResponse {
     private Integer tableId;
     private String tableName;
+    private String customerName;
+    private Integer guestCount;
+    private BigDecimal totalAmount;
     private List<KitchenItemResponse> items;
     private Integer totalItems;
 }

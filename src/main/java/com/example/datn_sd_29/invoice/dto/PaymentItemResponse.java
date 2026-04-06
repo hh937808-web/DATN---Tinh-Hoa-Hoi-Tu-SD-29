@@ -18,4 +18,5 @@ public class PaymentItemResponse {
     private String voucherCode; // Voucher code applied to this item
     private Integer productId; // For matching with vouchers
     private Integer comboId; // For matching with vouchers
+    private String status; // ORDERED | IN_PROGRESS | DONE | SERVED | CANCELLED
 }

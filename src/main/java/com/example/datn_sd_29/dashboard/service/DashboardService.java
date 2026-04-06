@@ -6,6 +6,7 @@ import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.dashboard.dto.InvoicePageResponse;
 import com.example.datn_sd_29.invoice.entity.Invoice;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
+import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import com.example.datn_sd_29.invoice.entity.InvoiceDiningTable;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceItemRepository;
@@ -747,8 +748,10 @@ public class DashboardService {
         Invoice invoice = invoiceRepository.findById(invoiceId)
             .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
         
-        // Get invoice items
-        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoiceId);
+        // Get invoice items (exclude CANCELLED items)
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoiceId).stream()
+                .filter(item -> item.getStatus() != InvoiceItemStatus.CANCELLED)
+                .toList();
         
         // Get tables
         List<InvoiceDiningTable> invoiceTables = invoiceDiningTableRepository.findByInvoiceIdWithTable(invoiceId);

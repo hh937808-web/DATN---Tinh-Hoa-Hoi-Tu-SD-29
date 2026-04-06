@@ -85,12 +85,13 @@ public class KitchenController {
     // ================= CANCEL =================
     @PutMapping("/items/{id}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancelItem(
-            @PathVariable @Min(1) Integer id
+            @PathVariable @Min(1) Integer id,
+            @RequestParam(required = false) Integer quantityToCancel
     ) {
 
-        log.info("Cancel item id={}", id);
+        log.info("Cancel item id={}, quantityToCancel={}", id, quantityToCancel);
 
-        kitchenService.cancelItem(id);
+        kitchenService.cancelItem(id, quantityToCancel);
 
         return ResponseEntity.ok(
                 ApiResponse.success("Cancel item successfully", null)

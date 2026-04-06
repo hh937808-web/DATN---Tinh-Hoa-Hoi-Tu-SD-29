@@ -12,6 +12,7 @@ import com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse;
 import com.example.datn_sd_29.invoice.entity.Invoice;
 import com.example.datn_sd_29.invoice.entity.InvoiceDiningTable;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
+import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import com.example.datn_sd_29.invoice.entity.InvoicePayment;
 import com.example.datn_sd_29.invoice.entity.InvoiceVoucher;
 import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
@@ -76,7 +77,9 @@ public class PaymentService {
     public PaymentDetailResponse getPaymentByTable(Integer tableId) {
         Invoice invoice = getSingleInProgressInvoice(tableId);
 
-        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId()).stream()
+                .filter(item -> item.getStatus() != InvoiceItemStatus.CANCELLED)
+                .toList();
         List<InvoiceDiningTable> tableLinks =
                 invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
 
@@ -125,6 +128,7 @@ public class PaymentService {
             i.setQuantity(item.getQuantity());
             i.setUnitPrice(item.getUnitPrice());
             i.setDiscount(BigDecimal.ZERO);
+            i.setStatus(item.getStatus() != null ? item.getStatus().name() : null); // Set status
             if (item.getProduct() != null) {
                 i.setName(item.getProduct().getProductName());
                 i.setType("PRODUCT");
@@ -162,7 +166,9 @@ public class PaymentService {
         List<PaymentDetailResponse> responses = new ArrayList<>();
 
         for (Invoice invoice : invoices) {
-            List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+            List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId()).stream()
+                    .filter(item -> item.getStatus() != InvoiceItemStatus.CANCELLED)
+                    .toList();
             List<InvoiceDiningTable> tableLinks =
                     invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
 
@@ -211,6 +217,7 @@ public class PaymentService {
                 i.setQuantity(item.getQuantity());
                 i.setUnitPrice(item.getUnitPrice());
                 i.setDiscount(BigDecimal.ZERO);
+                i.setStatus(item.getStatus() != null ? item.getStatus().name() : null); // Set status
                 if (item.getProduct() != null) {
                     i.setName(item.getProduct().getProductName());
                     i.setType("PRODUCT");
@@ -273,12 +280,35 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invoice is closed");
         }
 
-        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId()).stream()
+                .filter(item -> item.getStatus() != InvoiceItemStatus.CANCELLED)
+                .toList();
         
         // RULE: Block payment if invoice has no items
         if (items.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Cannot process payment: Invoice has no items");
+        }
+        
+        // RULE: Block payment if any item is not SERVED yet
+        List<InvoiceItem> unservedItems = items.stream()
+                .filter(item -> item.getStatus() != InvoiceItemStatus.SERVED)
+                .toList();
+        
+        if (!unservedItems.isEmpty()) {
+            String unservedItemNames = unservedItems.stream()
+                    .map(item -> {
+                        if (item.getProduct() != null) {
+                            return item.getProduct().getProductName();
+                        } else if (item.getProductCombo() != null) {
+                            return item.getProductCombo().getComboName();
+                        }
+                        return "Unknown";
+                    })
+                    .collect(Collectors.joining(", "));
+            
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Cannot process payment: Some items have not been served yet: " + unservedItemNames);
         }
         
         BigDecimal subtotal = items.stream()
@@ -689,7 +719,9 @@ public class PaymentService {
             invoiceItemRepository.save(item);
         }
 
-        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId());
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceIdWithItem(invoice.getId()).stream()
+                .filter(i -> i.getStatus() != InvoiceItemStatus.CANCELLED)
+                .toList();
         BigDecimal subtotal = items.stream()
                 .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
