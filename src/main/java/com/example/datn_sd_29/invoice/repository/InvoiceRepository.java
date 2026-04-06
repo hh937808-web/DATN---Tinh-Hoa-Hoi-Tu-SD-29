@@ -153,4 +153,13 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
            "AND i.reservedAt IS NOT NULL " +
            "ORDER BY i.reservedAt ASC")
     List<Invoice> findReservedReservationsByTableId(@Param("tableId") Integer tableId);
+
+    /**
+     * Find all IN_PROGRESS invoices with their tables for staff order selection.
+     */
+    @Query("SELECT DISTINCT i FROM Invoice i " +
+           "LEFT JOIN FETCH i.customer " +
+           "WHERE i.invoiceStatus = 'IN_PROGRESS' " +
+           "ORDER BY i.checkedInAt DESC")
+    List<Invoice> findAllInProgressInvoicesWithCustomer();
 }

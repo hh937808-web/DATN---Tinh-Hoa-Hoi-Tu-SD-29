@@ -6,6 +6,7 @@ import com.example.datn_sd_29.invoice.dto.KitchenTableGroupResponse;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
 import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import com.example.datn_sd_29.invoice.repository.InvoiceItemRepository;
+import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 public class KitchenService {
 
     private final InvoiceItemRepository invoiceItemRepository;
+    private final InvoiceRepository invoiceRepository;
 
     // ================= GET KITCHEN =================
     public List<KitchenTableGroupResponse> getKitchenGroupedByTable(List<InvoiceItemStatus> statuses) {
@@ -142,25 +144,43 @@ public class KitchenService {
             throw new RuntimeException("Only ORDERED items can be cancelled");
         }
 
-        // Nếu không truyền quantityToCancel hoặc >= quantity hiện tại → hủy toàn bộ
+        // Tính số lượng thực tế bị hủy
+        int actualQuantityToCancel;
         if (quantityToCancel == null || quantityToCancel >= item.getQuantity()) {
-            item.setStatus(InvoiceItemStatus.CANCELLED);
-            return;
+            actualQuantityToCancel = item.getQuantity();
+        } else {
+            if (quantityToCancel < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity to cancel must be >= 1");
+            }
+            actualQuantityToCancel = quantityToCancel;
         }
 
-        // Validate quantityToCancel
-        if (quantityToCancel < 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity to cancel must be >= 1");
+        // Tính số tiền cần trừ khỏi subtotalAmount
+        java.math.BigDecimal amountToDeduct = item.getUnitPrice()
+                .multiply(java.math.BigDecimal.valueOf(actualQuantityToCancel));
+
+        // Cập nhật invoice subtotalAmount
+        var invoice = item.getInvoice();
+        if (invoice != null && invoice.getSubtotalAmount() != null) {
+            java.math.BigDecimal currentSubtotal = invoice.getSubtotalAmount();
+            java.math.BigDecimal newSubtotal = currentSubtotal.subtract(amountToDeduct);
+            
+            // Đảm bảo subtotal không bị âm
+            if (newSubtotal.compareTo(java.math.BigDecimal.ZERO) < 0) {
+                newSubtotal = java.math.BigDecimal.ZERO;
+            }
+            
+            invoice.setSubtotalAmount(newSubtotal);
+            invoiceRepository.save(invoice);
         }
 
-        // Giảm quantity
-        int newQuantity = item.getQuantity() - quantityToCancel;
-        
-        if (newQuantity <= 0) {
-            // Nếu hủy hết → set status CANCELLED
+        // Cập nhật item status/quantity
+        if (actualQuantityToCancel >= item.getQuantity()) {
+            // Hủy toàn bộ → set status CANCELLED
             item.setStatus(InvoiceItemStatus.CANCELLED);
         } else {
             // Còn lại → giảm quantity, giữ nguyên status ORDERED
+            int newQuantity = item.getQuantity() - actualQuantityToCancel;
             item.setQuantity(newQuantity);
         }
     }
