@@ -19,7 +19,7 @@ public class EmployeeRequest {
     @Size(max = 100)
     private String username;
 
-    @NotBlank(message = "Password không được để trống")
+    // Password is only required when creating new employee, not when updating
     @Size(max = 150)
     private String password;
 

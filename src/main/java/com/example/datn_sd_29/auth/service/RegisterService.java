@@ -77,6 +77,13 @@ public class RegisterService {
         }
 
         String token = jwtService.generateTokenWithRole(customer.getEmail(), "USER", customer.getId());
-        return new LoginResponse(token, customer.getEmail(), "USER");
+        return new LoginResponse(
+            token, 
+            customer.getEmail(), 
+            "USER", 
+            customer.getId(), 
+            customer.getFullName(), 
+            customer.getEmail()
+        );
     }
 }

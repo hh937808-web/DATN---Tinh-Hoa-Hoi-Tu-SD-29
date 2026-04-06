@@ -9,28 +9,32 @@ import java.time.LocalDate;
 
 public class RegisterRequest {
 
-    @NotBlank
-    @Size(max = 150)
+    @NotBlank(message = "Họ và tên không được để trống")
+    @Size(max = 150, message = "Họ và tên không được vượt quá 150 ký tự")
     private String fullName;
 
-    @NotBlank
-    @Email
-    @Size(max = 200)
+    @NotBlank(message = "Email không được để trống")
+    @Email(message = "Email không hợp lệ")
+    @Size(max = 200, message = "Email không được vượt quá 200 ký tự")
     @Pattern(
             regexp = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$",
-            message = "Invalid email"
+            message = "Email không đúng định dạng"
     )
     private String email;
 
-    @NotBlank
-    @Size(min = 8, max = 64)
+    @NotBlank(message = "Mật khẩu không được để trống")
+    @Size(min = 8, max = 64, message = "Mật khẩu phải có độ dài từ 8 đến 64 ký tự")
     @Pattern(
             regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z\\d]).+$",
-            message = "Password must include upper, lower, digit, special char"
+            message = "Mật khẩu phải bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt"
     )
     private String password;
 
-    @Size(max = 10)
+    @Size(max = 10, message = "Số điện thoại không được vượt quá 10 ký tự")
+    @Pattern(
+            regexp = "^(0[0-9]{9})?$",
+            message = "Số điện thoại phải bắt đầu bằng số 0 và có đúng 10 chữ số"
+    )
     private String phoneNumber;
 
     private LocalDate dateOfBirth;

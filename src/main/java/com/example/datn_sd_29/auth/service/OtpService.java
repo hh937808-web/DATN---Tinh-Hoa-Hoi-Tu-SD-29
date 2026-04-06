@@ -45,7 +45,7 @@ public class OtpService {
     public SendOtpResponse startRegister(RegisterRequest request, HttpServletRequest httpRequest) {
         String normalizedEmail = normalizedEmail(request.getEmail());
         if (customerRepository.existsByEmailIgnoreCase(normalizedEmail)) {
-            throw new IllegalArgumentException("Email already exists");
+            throw new IllegalArgumentException("Email đã tồn tại");
         }
 
         Instant now = Instant.now();
@@ -85,13 +85,13 @@ public class OtpService {
     public SendOtpResponse sendRegisterOtp(SendOtpRequest request, HttpServletRequest httpRequest) {
         String normalizedEmail = normalizedEmail(request.getEmail());
         if (customerRepository.existsByEmailIgnoreCase(normalizedEmail)) {
-            throw new IllegalArgumentException("Email already exists");
+            throw new IllegalArgumentException("Email đã tồn tại");
         }
 
         Instant now = Instant.now();
         PendingRegister pending = getActivePendingOrNull(normalizedEmail, now);
         if (pending == null) {
-            throw new IllegalArgumentException("No pending register. Please submit register info first.");
+            throw new IllegalArgumentException("Không tìm thấy thông tin đăng ký. Vui lòng đăng ký lại.");
         }
 
         OtpChallenge challenge = issueRegisterOtp(normalizedEmail, httpRequest, now);
@@ -119,13 +119,13 @@ public class OtpService {
 
         OtpChallenge challenge = otpChallengeRepository
                 .findLatestActive(normalizedEmail, PURPOSE_REGISTER)
-                .orElseThrow(() -> new IllegalArgumentException("OTP not found. Please request OTP first."));
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy mã OTP. Vui lòng yêu cầu mã OTP mới."));
 
         if (challenge.getExpiresAt() != null && now.isAfter(challenge.getExpiresAt())) {
             challenge.setInvalidatedAt(now);
             challenge.setUpdatedAt(now);
             otpChallengeRepository.save(challenge);
-            throw new IllegalArgumentException("OTP expired. Please request a new OTP.");
+            throw new IllegalArgumentException("Mã OTP đã hết hạn. Vui lòng yêu cầu mã OTP mới.");
         }
 
         boolean matched = passwordEncoder.matches(request.getOtpCode(), challenge.getOtpHash());
@@ -136,24 +136,24 @@ public class OtpService {
             challenge.setUpdatedAt(now);
             otpChallengeRepository.save(challenge);
             otpRateLimitService.onVerifyFailed(normalizedEmail);
-            throw new IllegalArgumentException("Invalid OTP code.");
+            throw new IllegalArgumentException("Mã OTP không chính xác.");
         }
 
         PendingRegister pending = getActivePendingOrNull(normalizedEmail, now);
         if (pending == null) {
-            throw new IllegalArgumentException("No pending register. Please register first.");
+            throw new IllegalArgumentException("Không tìm thấy thông tin đăng ký. Vui lòng đăng ký lại.");
         }
 
         if (customerRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             pending.setInvalidatedAt(now);
             pending.setUpdatedAt(now);
             pendingRegisterRepository.save(pending);
-            throw new IllegalArgumentException("Email already exists");
+            throw new IllegalArgumentException("Email đã tồn tại");
         }
 
         String passwordHash = trimToNull(pending.getPasswordHash());
         if (passwordHash == null) {
-            throw new IllegalArgumentException("Pending register is invalid. Please register again.");
+            throw new IllegalArgumentException("Thông tin đăng ký không hợp lệ. Vui lòng đăng ký lại.");
         }
 
         Customer customer = new Customer();
@@ -215,7 +215,7 @@ public class OtpService {
             if (nextResendAt != null && now.isBefore(nextResendAt)) {
                 long waitSeconds = Math.max(Duration.between(now, nextResendAt).getSeconds(), 1);
                 throw new IllegalArgumentException(
-                        "Please wait " + waitSeconds + " seconds before requesting a new OTP"
+                        "Vui lòng đợi " + waitSeconds + " giây trước khi yêu cầu mã OTP mới"
                 );
             }
 
@@ -259,7 +259,7 @@ public class OtpService {
     private String normalizedEmail(String email) {
         String normalizedEmail = trimToNull(email);
         if (normalizedEmail == null) {
-            throw new IllegalArgumentException("Email is required");
+            throw new IllegalArgumentException("Email không được để trống");
         }
         return normalizedEmail.toLowerCase();
     }

@@ -6,6 +6,7 @@ import com.example.datn_sd_29.employee.enums.Gender;
 import com.example.datn_sd_29.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.*;
@@ -16,6 +17,7 @@ import java.util.List;
 public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
+    private final PasswordEncoder passwordEncoder;
 
     // ====== GET ALL ======
     public List<Employee> getAll() {
@@ -38,11 +40,17 @@ public class EmployeeService {
             throw new RuntimeException("Username đã tồn tại");
         }
 
+        // Validate password is provided when creating new employee
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new RuntimeException("Password không được để trống khi tạo nhân viên mới");
+        }
+
         Employee emp = new Employee();
 
         emp.setFullName(request.getFullName());
         emp.setUsername(request.getUsername());
-        emp.setPassword(request.getPassword());
+        // Hash password before saving to database
+        emp.setPassword(passwordEncoder.encode(request.getPassword()));
         emp.setRole(request.getRole());
         emp.setGender(request.getGender());
         emp.setAddress(request.getAddress());
@@ -62,6 +70,19 @@ public class EmployeeService {
 
         emp.setFullName(request.getFullName());
         emp.setUsername(request.getUsername());
+        
+        // Only update password if it's provided and different from current hash
+        // This prevents overwriting hashed password with plain text
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            // Check if password is already hashed (BCrypt format starts with $2a$ or $2b$)
+            String newPassword = request.getPassword();
+            if (!newPassword.startsWith("$2a$") && !newPassword.startsWith("$2b$")) {
+                // Password is plain text, need to hash it
+                emp.setPassword(passwordEncoder.encode(newPassword));
+            }
+            // If already hashed, don't update (keep existing hash)
+        }
+        
         emp.setRole(request.getRole());
         emp.setGender(request.getGender());
         emp.setAddress(request.getAddress());

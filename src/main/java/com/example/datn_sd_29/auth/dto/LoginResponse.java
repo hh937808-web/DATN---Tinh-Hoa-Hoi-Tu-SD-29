@@ -5,12 +5,18 @@ public class LoginResponse {
     private String tokenType;
     private String email;
     private String role;
+    private Integer userId;
+    private String fullName;
+    private String username;
 
-    public LoginResponse(String accessToken, String email, String role) {
+    public LoginResponse(String accessToken, String email, String role, Integer userId, String fullName, String username) {
         this.accessToken = accessToken;
         this.tokenType = "Bearer";
         this.email = email;
         this.role = role;
+        this.userId = userId;
+        this.fullName = fullName;
+        this.username = username;
     }
 
     public String getAccessToken() {
@@ -27,5 +33,17 @@ public class LoginResponse {
 
     public String getRole() {
         return role;
+    }
+
+    public Integer getUserId() {
+        return userId;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public String getUsername() {
+        return username;
     }
 }

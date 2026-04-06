@@ -1,15 +1,13 @@
 package com.example.datn_sd_29.auth.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public class LoginRequest {
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Invalid email")
-    @Size(max = 200, message = "Email max 200 characters")
-    private String email;
+    @NotBlank(message = "Email/Username is required")
+    @Size(max = 200, message = "Email/Username max 200 characters")
+    private String email; // Can be email or username
 
     @NotBlank(message = "Password is required")
     @Size(max = 150, message = "Password max 150 characters")

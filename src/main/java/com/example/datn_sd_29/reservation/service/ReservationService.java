@@ -144,9 +144,9 @@ public class ReservationService {
         Invoice invoice = new Invoice();
         invoice.setCustomer(customer);
 
-        Employee emp = employeeRepository.findById(1)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found with id: 1"));
-        invoice.setEmployee(emp);
+        // Employee will be assigned later when reception confirms the reservation
+        // Do not set employee here for online reservations
+        invoice.setEmployee(null);
 
         invoice.setInvoiceChannel("ONLINE");
         invoice.setInvoiceStatus("PENDING_CONFIRMATION");
