@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.walkin.service;
 
 import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
+import com.example.datn_sd_29.common.service.InvoiceBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
@@ -39,6 +40,7 @@ public class WalkInService {
     private final EmployeeRepository employeeRepository;
     private final CustomerRepository customerRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    private final InvoiceBroadcastService invoiceBroadcastService;
     
     @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
     private boolean securityEnabled;
@@ -167,6 +169,13 @@ public class WalkInService {
             diningTableRepository.updateTableStatusByIdIn(tableIds, "IN_USE");
             tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "IN_USE");
         }
+
+        // Broadcast invoice update
+        invoiceBroadcastService.broadcastInvoiceUpdate(
+            invoice.getId(),
+            invoice.getInvoiceCode(),
+            "IN_PROGRESS"
+        );
 
         return new WalkInCheckInResponse(
             invoice.getId(),

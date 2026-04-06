@@ -40,6 +40,7 @@ public class StaffOrderService {
     private final ProductRepository productRepository;
     private final ProductComboRepository productComboRepository;
     private final DiningTableRepository diningTableRepository;
+    private final com.example.datn_sd_29.common.service.KitchenBroadcastService kitchenBroadcastService;
 
     public List<InvoiceGroupResponse> getInProgressInvoices() {
         List<Invoice> invoices = invoiceRepository.findAllInProgressInvoicesWithCustomer();
@@ -190,6 +191,9 @@ public class StaffOrderService {
                 : invoice.getSubtotalAmount();
         invoice.setSubtotalAmount(currentSubtotal.add(addedSubtotal));
         invoiceRepository.save(invoice);
+        
+        // Broadcast kitchen update
+        kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", toSave.size());
     }
 
     @Transactional
@@ -262,6 +266,9 @@ public class StaffOrderService {
                 : invoice.getSubtotalAmount();
         invoice.setSubtotalAmount(currentSubtotal.add(addedSubtotal));
         invoiceRepository.save(invoice);
+        
+        // Broadcast kitchen update
+        kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", toSave.size());
     }
 
     /**

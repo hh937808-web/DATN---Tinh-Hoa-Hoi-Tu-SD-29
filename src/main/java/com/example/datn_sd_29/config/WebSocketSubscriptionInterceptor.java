@@ -30,7 +30,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     // Topics accessible by ADMIN, RECEPTION, and STAFF
     private static final Set<String> STAFF_ACCESSIBLE_TOPICS = Set.of(
         "/topic/table-status",
-        "/topic/overtime-alerts"
+        "/topic/overtime-alerts",
+        "/topic/noshow",
+        "/topic/kitchen-updates"
     );
 
     @Override

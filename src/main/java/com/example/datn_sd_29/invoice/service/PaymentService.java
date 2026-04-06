@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.invoice.service;
 
 import com.example.datn_sd_29.common.service.TableStatusBroadcastService;
+import com.example.datn_sd_29.common.service.InvoiceBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
@@ -63,6 +64,7 @@ public class PaymentService {
     private final ProductComboVoucherRepository productComboVoucherRepository;
     private final DiningTableRepository diningTableRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    private final InvoiceBroadcastService invoiceBroadcastService;
     
     @Value("${payment.vat.percent:10}")
     private BigDecimal vatPercent;
@@ -605,6 +607,13 @@ public class PaymentService {
             // Broadcast table status change via WebSocket (Requirement 4.1)
             tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
         }
+
+        // Broadcast invoice update
+        invoiceBroadcastService.broadcastInvoiceUpdate(
+            invoice.getId(),
+            invoice.getInvoiceCode(),
+            "PAID"
+        );
 
         if (paymentLines != null && !paymentLines.isEmpty()) {
             for (PaymentCheckoutRequest.PaymentLine line : paymentLines) {

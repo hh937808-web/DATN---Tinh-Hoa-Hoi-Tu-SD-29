@@ -22,6 +22,7 @@ public class KitchenService {
 
     private final InvoiceItemRepository invoiceItemRepository;
     private final InvoiceRepository invoiceRepository;
+    private final com.example.datn_sd_29.common.service.KitchenBroadcastService kitchenBroadcastService;
 
     // ================= GET KITCHEN =================
     public List<KitchenTableGroupResponse> getKitchenGroupedByTable(List<InvoiceItemStatus> statuses) {
@@ -106,6 +107,10 @@ public class KitchenService {
         }
 
         item.setStatus(InvoiceItemStatus.IN_PROGRESS);
+        
+        // Broadcast kitchen update
+        String itemName = getItemName(item);
+        kitchenBroadcastService.broadcastKitchenUpdate("STATUS_CHANGED", id, itemName);
     }
 
     // ================= DONE COOKING =================
@@ -119,6 +124,10 @@ public class KitchenService {
         }
 
         item.setStatus(InvoiceItemStatus.DONE);
+        
+        // Broadcast kitchen update
+        String itemName = getItemName(item);
+        kitchenBroadcastService.broadcastKitchenUpdate("STATUS_CHANGED", id, itemName);
     }
 
     // ================= SERVE =================
@@ -132,6 +141,10 @@ public class KitchenService {
         }
 
         item.setStatus(InvoiceItemStatus.SERVED);
+        
+        // Broadcast kitchen update
+        String itemName = getItemName(item);
+        kitchenBroadcastService.broadcastKitchenUpdate("STATUS_CHANGED", id, itemName);
     }
 
     // ================= CANCEL =================
@@ -183,11 +196,24 @@ public class KitchenService {
             int newQuantity = item.getQuantity() - actualQuantityToCancel;
             item.setQuantity(newQuantity);
         }
+        
+        // Broadcast kitchen update
+        String itemName = getItemName(item);
+        kitchenBroadcastService.broadcastKitchenUpdate("ITEM_CANCELLED", id, itemName);
     }
 
     // ================= COMMON =================
     private InvoiceItem getItemOrThrow(Integer id) {
         return invoiceItemRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Invoice item not found"));
+    }
+    
+    private String getItemName(InvoiceItem item) {
+        if ("PRODUCT".equals(item.getItemType()) && item.getProduct() != null) {
+            return item.getProduct().getProductName();
+        } else if ("COMBO".equals(item.getItemType()) && item.getProductCombo() != null) {
+            return item.getProductCombo().getComboName();
+        }
+        return "Unknown Item";
     }
 }

@@ -3,6 +3,7 @@ package com.example.datn_sd_29.config;
 import com.example.datn_sd_29.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
@@ -23,13 +24,27 @@ import java.util.Map;
 public class WebSocketAuthInterceptor implements HandshakeInterceptor {
 
     private final JwtService jwtService;
+    
+    @Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) {
         
-        log.info("WebSocket handshake initiated");
+        log.info("WebSocket handshake initiated (security.api.enabled={})", securityEnabled);
         
+        // If security is disabled, allow all WebSocket connections without authentication
+        // This is for development mode where all APIs are public
+        if (!securityEnabled) {
+            log.info("WebSocket handshake accepted: Security disabled (dev mode) - allowing all connections");
+            // Set generic dev user attributes with ADMIN role to access all topics
+            attributes.put("email", "dev-user");
+            attributes.put("role", "ADMIN");
+            return true;
+        }
+        
+        // Security enabled - validate JWT token
         if (request instanceof ServletServerHttpRequest) {
             ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
             String token = servletRequest.getServletRequest().getParameter("token");
@@ -55,7 +70,7 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
                     return false;
                 }
                 
-                // Verify role
+                // Verify role - allow STAFF, RECEPTION, and ADMIN
                 if (!"STAFF".equals(role) && !"RECEPTION".equals(role) && !"ADMIN".equals(role)) {
                     log.warn("WebSocket handshake rejected: User {} with role {} not authorized", email, role);
                     return false;
