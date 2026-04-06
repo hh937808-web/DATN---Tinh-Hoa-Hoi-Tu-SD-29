@@ -1,11 +1,7 @@
 package com.example.datn_sd_29.customer.controller;
 
 import com.example.datn_sd_29.common.dto.ApiResponse;
-import com.example.datn_sd_29.customer.dto.CustomerListResponse;
-import com.example.datn_sd_29.customer.dto.CustomerProfileResponse;
-import com.example.datn_sd_29.customer.dto.CustomerResponse;
-import com.example.datn_sd_29.customer.dto.UpdateProfileRequest;
-import com.example.datn_sd_29.customer.dto.UpdateProfileResponse;
+import com.example.datn_sd_29.customer.dto.*;
 import com.example.datn_sd_29.customer.entity.Gender;
 import com.example.datn_sd_29.customer.service.CustomerService;
 import jakarta.validation.Valid;
@@ -108,5 +104,17 @@ public class CustomerController {
             throw new RuntimeException("Invalid Authorization header");
         }
         return authHeader.substring(7);
+    }
+
+    // ========================
+// CUSTOMER: CHANGE PASSWORD
+// ========================
+    @PutMapping("/profile/change-password")
+    public ChangePasswordResponse changePassword(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody @Valid ChangePasswordRequest request
+    ) {
+        String token = extractToken(authHeader);
+        return customerService.changePassword(token, request);
     }
 }

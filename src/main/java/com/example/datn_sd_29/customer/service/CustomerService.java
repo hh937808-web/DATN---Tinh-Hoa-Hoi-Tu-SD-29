@@ -1,16 +1,13 @@
 package com.example.datn_sd_29.customer.service;
 
-import com.example.datn_sd_29.customer.dto.CustomerListResponse;
-import com.example.datn_sd_29.customer.dto.CustomerProfileResponse;
-import com.example.datn_sd_29.customer.dto.CustomerResponse;
-import com.example.datn_sd_29.customer.dto.UpdateProfileRequest;
-import com.example.datn_sd_29.customer.dto.UpdateProfileResponse;
+import com.example.datn_sd_29.customer.dto.*;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.customer.entity.Gender;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -24,6 +21,7 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final JwtService jwtService;
+    private final PasswordEncoder passwordEncoder;
 
     // ========================
     // ADMIN: GET ALL CUSTOMERS WITH SORT
@@ -181,4 +179,65 @@ public class CustomerService {
                 .accessToken(newToken)
                 .build();
     }
+
+    // ========================
+    // CUSTOMER: CHANGE PASSWORD
+    // ========================
+    // ========================
+// CUSTOMER: CHANGE PASSWORD
+// ========================
+    public ChangePasswordResponse changePassword(String token, ChangePasswordRequest request) {
+
+        Integer customerId = jwtService.extractCustomerId(token);
+        String email = jwtService.extractEmail(token);
+        String role = jwtService.extractRole(token);
+
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 1. Check nhập đủ
+        if (request.getOldPassword() == null || request.getOldPassword().isBlank()
+                || request.getNewPassword() == null || request.getNewPassword().isBlank()
+                || request.getConfirmPassword() == null || request.getConfirmPassword().isBlank()) {
+            throw new RuntimeException("Vui lòng nhập đầy đủ thông tin");
+        }
+
+        // 2. Check mật khẩu cũ
+        if (!passwordEncoder.matches(request.getOldPassword(), customer.getPassword())) {
+            throw new RuntimeException("Mật khẩu hiện tại không đúng");
+        }
+
+        // 3. Check xác nhận
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new RuntimeException("Mật khẩu xác nhận không khớp");
+        }
+
+        // 4. Check độ dài
+        if (request.getNewPassword().length() < 6) {
+            throw new RuntimeException("Mật khẩu mới phải có ít nhất 6 ký tự");
+        }
+
+        // 5. Không cho trùng mật khẩu cũ
+        if (passwordEncoder.matches(request.getNewPassword(), customer.getPassword())) {
+            throw new RuntimeException("Mật khẩu mới không được trùng mật khẩu cũ");
+        }
+
+        // 6. Encode password mới
+        customer.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        customerRepository.save(customer);
+
+        // 7. Tạo token mới để user không bị out login
+        String newToken = jwtService.generateToken(
+                email,
+                customer.getId(),
+                role
+        );
+
+        return ChangePasswordResponse.builder()
+                .message("Đổi mật khẩu thành công")
+                .accessToken(newToken)
+                .build();
+    }
 }
+
+
