@@ -83,7 +83,8 @@ public class RegisterService {
             "USER", 
             customer.getId(), 
             customer.getFullName(), 
-            customer.getEmail()
+            customer.getEmail(),
+            customer.getPhoneNumber()
         );
     }
 }

@@ -60,15 +60,27 @@ public class KitchenService {
                     ? invoice.getGuestCount() 
                     : 0;
                 
-                map.put(tableId, new KitchenTableGroupResponse(
+                // Get serving staff info from invoice
+                Integer servingStaffId = null;
+                String servingStaffName = null;
+                if (invoice != null && invoice.getServingStaff() != null) {
+                    servingStaffId = invoice.getServingStaff().getId();
+                    servingStaffName = invoice.getServingStaff().getFullName();
+                }
+                
+                KitchenTableGroupResponse response = new KitchenTableGroupResponse(
                     tableId,
                     table.getTableName(),
                     customerName,
                     guestCount,
                     java.math.BigDecimal.ZERO, // Sẽ tính sau
                     new ArrayList<>(),
-                    0
-                ));
+                    0,
+                    servingStaffId,
+                    servingStaffName
+                );
+                
+                map.put(tableId, response);
             }
 
             String itemName = "PRODUCT".equals(item.getItemType())

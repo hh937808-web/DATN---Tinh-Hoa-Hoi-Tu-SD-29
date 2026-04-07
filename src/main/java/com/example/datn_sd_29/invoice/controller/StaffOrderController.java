@@ -25,18 +25,21 @@ import java.util.List;
 public class StaffOrderController {
     private final StaffOrderService staffOrderService;
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/invoices/in-progress")
     public ResponseEntity<ApiResponse<List<InvoiceGroupResponse>>> getInProgressInvoices() {
         List<InvoiceGroupResponse> invoices = staffOrderService.getInProgressInvoices();
         return ResponseEntity.ok(ApiResponse.success("Success", invoices));
     }
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/invoices/{invoiceId}/items")
     public ResponseEntity<ApiResponse<List<InvoiceItemResponse>>> getInvoiceItems(@PathVariable Integer invoiceId) {
         List<InvoiceItemResponse> items = staffOrderService.getInvoiceItems(invoiceId);
         return ResponseEntity.ok(ApiResponse.success("Success", items));
     }
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @PostMapping("/invoices/{invoiceId}/order-items")
     public ResponseEntity<ApiResponse<Void>> addItemsToInvoice(
             @PathVariable Integer invoiceId,
@@ -46,18 +49,21 @@ public class StaffOrderController {
         return ResponseEntity.ok(ApiResponse.success("Order success", null));
     }
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/tables/serving")
     public ResponseEntity<ApiResponse<List<StaffTableResponse>>> getServingTables() {
         List<StaffTableResponse> tables = staffOrderService.getServingTables();
         return ResponseEntity.ok(ApiResponse.success("Success", tables));
     }
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/tables/staff/{tableId}")
     public ResponseEntity<ApiResponse<StaffTableResponse>> getTableById(@PathVariable Integer tableId) {
         StaffTableResponse table = staffOrderService.getTableById(tableId);
         return ResponseEntity.ok(ApiResponse.success("Success", table));
     }
 
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @PostMapping("/tables/{tableId}/order-items")
     public ResponseEntity<ApiResponse<Void>> addItemsToTable(
             @PathVariable Integer tableId,

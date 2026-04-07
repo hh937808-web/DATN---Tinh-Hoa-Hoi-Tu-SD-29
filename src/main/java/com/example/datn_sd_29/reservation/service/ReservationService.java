@@ -122,6 +122,7 @@ public class ReservationService {
                     });
         }
 
+
         customer.setFullName(request.getFullName());
         customer.setPhoneNumber(request.getPhoneNumber());
         customerRepository.save(customer);
@@ -157,6 +158,10 @@ public class ReservationService {
         invoice.setGuestCount(guestCount);
         invoice.setPromotionType(request.getPromotionType());
         invoice.setFoodNote(request.getFoodNote());
+
+        // Thêm guest info cho đặt bàn hộ
+        invoice.setGuestName(request.getGuestName());
+        invoice.setGuestPhone(request.getGuestPhone());
 
         invoice = invoiceRepository.save(invoice);
         
@@ -345,6 +350,8 @@ public class ReservationService {
                             invoice.getGuestCount(),
                             customer != null ? customer.getFullName() : "",
                             customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getGuestName(),
+                            invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
                             invoice.getPromotionType(),
                             invoice.getReservationNote(),
@@ -415,6 +422,8 @@ public class ReservationService {
                             invoice.getGuestCount(),
                             customer != null ? customer.getFullName() : "",
                             customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getGuestName(),
+                            invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
                             invoice.getPromotionType(),
                             invoice.getReservationNote(),
@@ -438,6 +447,8 @@ public class ReservationService {
                             invoice.getGuestCount(),
                             customer != null ? customer.getFullName() : "",
                             customer != null ? customer.getPhoneNumber() : "",
+                            invoice.getGuestName(),
+                            invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
                             invoice.getPromotionType(),
                             invoice.getReservationNote(),
@@ -517,8 +528,20 @@ public class ReservationService {
             Customer customer,
             List<ReservationResponse.TableInfo> tables
     ) {
-        String fullName = customer != null ? customer.getFullName() : "";
-        String phoneNumber = customer != null ? customer.getPhoneNumber() : "";
+        // LOGIC: Nếu có guestName/guestPhone (đặt bàn hộ) → dùng guest info
+        //        Nếu không → dùng customer info (đặt cho chính mình)
+        String fullName;
+        String phoneNumber;
+        
+        if (invoice.getGuestName() != null && !invoice.getGuestName().trim().isEmpty()) {
+            // Đặt bàn hộ - hiển thị thông tin người dùng bữa
+            fullName = invoice.getGuestName();
+            phoneNumber = invoice.getGuestPhone() != null ? invoice.getGuestPhone() : "";
+        } else {
+            // Đặt cho chính mình - hiển thị thông tin người đặt
+            fullName = customer != null ? customer.getFullName() : "";
+            phoneNumber = customer != null ? customer.getPhoneNumber() : "";
+        }
 
         return new ReservationResponse(
                 invoice.getReservationCode(),

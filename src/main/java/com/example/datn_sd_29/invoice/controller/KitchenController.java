@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,7 @@ public class KitchenController {
     private final KitchenService kitchenService;
 
     // ================= GET GROUP BY TABLE =================
+    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
     @GetMapping("/tables")
     public ResponseEntity<ApiResponse<List<KitchenTableGroupResponse>>> getKitchenByTable(
             @RequestParam(required = false) List<InvoiceItemStatus> statuses
@@ -38,6 +40,7 @@ public class KitchenController {
     }
 
     // ================= START COOKING =================
+    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
     @PutMapping("/items/{id}/start")
     public ResponseEntity<ApiResponse<Void>> startCooking(
             @PathVariable @Min(1) Integer id
@@ -53,6 +56,7 @@ public class KitchenController {
     }
 
     // ================= DONE COOKING =================
+    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
     @PutMapping("/items/{id}/done")
     public ResponseEntity<ApiResponse<Void>> doneCooking(
             @PathVariable @Min(1) Integer id
@@ -68,6 +72,7 @@ public class KitchenController {
     }
 
     // ================= SERVE =================
+    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
     @PutMapping("/items/{id}/serve")
     public ResponseEntity<ApiResponse<Void>> serveItem(
             @PathVariable @Min(1) Integer id
@@ -83,6 +88,7 @@ public class KitchenController {
     }
 
     // ================= CANCEL =================
+    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
     @PutMapping("/items/{id}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancelItem(
             @PathVariable @Min(1) Integer id,

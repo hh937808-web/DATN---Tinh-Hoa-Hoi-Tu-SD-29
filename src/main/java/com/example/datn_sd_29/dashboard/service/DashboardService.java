@@ -314,6 +314,7 @@ public class DashboardService {
                 Long minutesSinceCheckIn = null;
                 Instant reservedAt = null;
                 String customerName = null;
+                String staffName = null;
                 
                 // Check if table has an active invoice
                 Invoice invoice = tableToInvoiceMap.get(table.getId());
@@ -321,6 +322,11 @@ public class DashboardService {
                     // Get customer name if available
                     if (invoice.getCustomer() != null) {
                         customerName = invoice.getCustomer().getFullName();
+                    }
+                    
+                    // Get serving staff name if available (not cashier/employee)
+                    if (invoice.getServingStaff() != null) {
+                        staffName = invoice.getServingStaff().getFullName();
                     }
                     
                     if ("IN_PROGRESS".equals(invoice.getInvoiceStatus())) {
@@ -365,7 +371,8 @@ public class DashboardService {
                     status,
                     minutesSinceCheckIn,
                     reservedAt,
-                    customerName
+                    customerName,
+                    staffName
                 );
             })
             .collect(Collectors.toList());
@@ -474,8 +481,9 @@ public class DashboardService {
                 response.setCustomerPhone(invoice.getCustomer().getPhoneNumber());
             }
             
-            if (invoice.getEmployee() != null) {
-                response.setStaffName(invoice.getEmployee().getFullName());
+            // Get serving staff name (not cashier/employee)
+            if (invoice.getServingStaff() != null) {
+                response.setStaffName(invoice.getServingStaff().getFullName());
             }
         }
         

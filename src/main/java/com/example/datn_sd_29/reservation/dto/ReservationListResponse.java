@@ -15,6 +15,8 @@ public class ReservationListResponse {
     private Integer guestCount;
     private String fullName;
     private String phoneNumber;
+    private String guestName;      // Tên người được đặt hộ
+    private String guestPhone;     // SĐT người được đặt hộ
     private String invoiceStatus;
     private String promotionType;
     private String note;

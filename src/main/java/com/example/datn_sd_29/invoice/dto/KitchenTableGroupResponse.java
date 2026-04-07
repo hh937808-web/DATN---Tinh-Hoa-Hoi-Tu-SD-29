@@ -18,4 +18,6 @@ public class KitchenTableGroupResponse {
     private BigDecimal totalAmount;
     private List<KitchenItemResponse> items;
     private Integer totalItems;
+    private Integer servingStaffId;
+    private String servingStaffName;
 }

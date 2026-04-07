@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -22,6 +23,7 @@ import java.util.List;
 public class DashboardController {
     private final DashboardService dashboardService;
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<DashboardStatsResponse>> getStats(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -44,6 +46,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/top-products")
     public ResponseEntity<ApiResponse<List<TopProductResponse>>> getTopProducts(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -67,6 +70,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/recent-invoices")
     public ResponseEntity<ApiResponse<List<RecentInvoiceResponse>>> getRecentInvoices(
             @RequestParam(defaultValue = "5") int limit
@@ -82,6 +86,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/table-status")
     public ResponseEntity<ApiResponse<List<com.example.datn_sd_29.dashboard.dto.TableStatusResponse>>> getTableStatus() {
         try {
@@ -95,6 +100,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/table-detail/{tableId}")
     public ResponseEntity<ApiResponse<com.example.datn_sd_29.dashboard.dto.TableDetailResponse>> getTableDetail(
             @PathVariable Integer tableId
@@ -110,6 +116,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/revenue-chart")
     public ResponseEntity<ApiResponse<com.example.datn_sd_29.dashboard.dto.RevenueChartResponse>> getRevenueChart(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -132,6 +139,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/invoices")
     public ResponseEntity<ApiResponse<InvoicePageResponse>> getAllInvoices(
             @RequestParam(defaultValue = "0") int page,
@@ -157,6 +165,7 @@ public class DashboardController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/invoice-detail/{invoiceId}")
     public ResponseEntity<ApiResponse<com.example.datn_sd_29.invoice.dto.PaymentDetailResponse>> getInvoiceDetail(
             @PathVariable Integer invoiceId

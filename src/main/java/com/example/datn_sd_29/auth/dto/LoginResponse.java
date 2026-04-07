@@ -8,8 +8,9 @@ public class LoginResponse {
     private Integer userId;
     private String fullName;
     private String username;
+    private String phoneNumber;
 
-    public LoginResponse(String accessToken, String email, String role, Integer userId, String fullName, String username) {
+    public LoginResponse(String accessToken, String email, String role, Integer userId, String fullName, String username, String phoneNumber) {
         this.accessToken = accessToken;
         this.tokenType = "Bearer";
         this.email = email;
@@ -17,6 +18,7 @@ public class LoginResponse {
         this.userId = userId;
         this.fullName = fullName;
         this.username = username;
+        this.phoneNumber = phoneNumber;
     }
 
     public String getAccessToken() {
@@ -45,5 +47,9 @@ public class LoginResponse {
 
     public String getUsername() {
         return username;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
     }
 }

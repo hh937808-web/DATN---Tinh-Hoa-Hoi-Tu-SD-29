@@ -21,6 +21,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -77,9 +80,27 @@ public class WalkInService {
             employee = employeeRepository.findByEmailIgnoreCase(email)
                     .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
         } else {
-            // Development mode: sử dụng employee mặc định (ID = 1)
-            employee = employeeRepository.findById(1)
-                    .orElseThrow(() -> new IllegalArgumentException("Default employee not found with id: 1"));
+            // Development mode: lấy employee từ X-Employee-Username header
+            try {
+                ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attributes != null) {
+                    HttpServletRequest httpRequest = attributes.getRequest();
+                    String username = httpRequest.getHeader("X-Employee-Username");
+                    
+                    if (username != null && !username.trim().isEmpty()) {
+                        employee = employeeRepository.findByUsernameIgnoreCase(username.trim())
+                                .orElseThrow(() -> new IllegalArgumentException("Employee not found with username: " + username));
+                    } else {
+                        throw new IllegalArgumentException("X-Employee-Username header is required when security is disabled");
+                    }
+                } else {
+                    throw new IllegalArgumentException("Cannot get request context");
+                }
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Failed to get employee from header: " + e.getMessage());
+            }
         }
 
         // Validate request
