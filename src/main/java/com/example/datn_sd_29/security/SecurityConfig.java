@@ -79,6 +79,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/product-combo-vouchers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/product-vouchers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/customer-vouchers/**").permitAll()
+                        .requestMatchers("/api/tables/**").permitAll()
                         
                         // ========================================
                         // ADMIN + RECEPTION - Dashboard & Reports

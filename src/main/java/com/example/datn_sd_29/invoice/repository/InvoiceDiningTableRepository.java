@@ -15,6 +15,7 @@ import java.util.Optional;
 @Repository
 public interface InvoiceDiningTableRepository extends JpaRepository<InvoiceDiningTable, Integer> {
 
+    List<InvoiceDiningTable> findByInvoiceId(Integer invoiceId);
     @Query("""
         select idt
         from InvoiceDiningTable idt

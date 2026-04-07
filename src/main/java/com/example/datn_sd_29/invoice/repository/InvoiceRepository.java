@@ -2,6 +2,7 @@ package com.example.datn_sd_29.invoice.repository;
 
 import com.example.datn_sd_29.dashboard.dto.RecentInvoiceResponse;
 import com.example.datn_sd_29.invoice.entity.Invoice;
+import com.example.datn_sd_29.invoice.entity.InvoiceDiningTable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +16,9 @@ import java.util.Optional;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
+
+    List<Invoice> findByCustomerId(Integer customerId);
+
 
     Optional<Invoice> findByReservationCode(String reservationCode);
     
