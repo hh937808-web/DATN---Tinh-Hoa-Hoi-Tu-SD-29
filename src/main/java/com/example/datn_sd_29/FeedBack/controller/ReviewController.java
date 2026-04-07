@@ -37,17 +37,17 @@ public class ReviewController {
     }
 
     @PutMapping("/admin/{id}/approve")
-    public ReviewResponse approveReview(@PathVariable Integer id) {
+    public ReviewResponse approveReview(@PathVariable Long id) {
         return reviewService.approveReview(id);
     }
 
     @PutMapping("/admin/{id}/reject")
-    public ReviewResponse rejectReview(@PathVariable Integer id) {
+    public ReviewResponse rejectReview(@PathVariable Long id) {
         return reviewService.rejectReview(id);
     }
 
     @DeleteMapping("/admin/{id}")
-    public String deleteReview(@PathVariable Integer id) {
+    public String deleteReview(@PathVariable Long id) {
         reviewService.deleteReview(id);
         return "Xóa đánh giá thành công";
     }

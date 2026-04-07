@@ -58,7 +58,7 @@ public class ReviewService {
     }
 
     // admin duyệt
-    public ReviewResponse approveReview(Integer id) {
+    public ReviewResponse approveReview(Long id) {
         Review review = reviewRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đánh giá"));
 
@@ -67,7 +67,7 @@ public class ReviewService {
     }
 
     // admin từ chối
-    public ReviewResponse rejectReview(Integer id) {
+    public ReviewResponse rejectReview(Long id) {
         Review review = reviewRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đánh giá"));
 
@@ -76,7 +76,7 @@ public class ReviewService {
     }
 
     // admin xóa
-    public void deleteReview(Integer id) {
+    public void deleteReview(Long id) {
         if (!reviewRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy đánh giá");
         }

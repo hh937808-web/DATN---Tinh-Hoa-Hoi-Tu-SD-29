@@ -87,6 +87,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/customer-vouchers/**").permitAll()
                         
                         // ========================================
+                        // REVIEWS - Public read, authenticated write, admin manage
+                        // ========================================
+                        .requestMatchers(HttpMethod.GET, "/api/reviews").permitAll()  // Khách xem reviews đã duyệt
+                        .requestMatchers(HttpMethod.POST, "/api/reviews").permitAll()  // Khách gửi review (không cần đăng nhập)
+                        .requestMatchers("/api/reviews/admin/**").hasRole("ADMIN")  // Admin quản lý reviews
+                        
+                        // ========================================
                         // ADMIN ONLY - Management Endpoints (ĐẶT TRƯỚC để ưu tiên)
                         // ========================================
                         .requestMatchers("/api/debug/**").hasRole("ADMIN")
