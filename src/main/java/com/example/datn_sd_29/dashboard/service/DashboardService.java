@@ -336,13 +336,8 @@ public class DashboardService {
                                 invoice.getCheckedInAt(), now
                             );
                             
-                            if (minutesSinceCheckIn <= 90) {
-                                // Normal service time
-                                status = "OCCUPIED";
-                            } else {
-                                // Over 90 minutes - needs attention
-                                status = "OVERTIME";
-                            }
+                            // Normal service time
+                            status = "OCCUPIED";
                         } else {
                             // No check-in time, still show as OCCUPIED
                             status = "OCCUPIED";
@@ -432,7 +427,7 @@ public class DashboardService {
                     long minutesSinceCheckIn = java.time.temporal.ChronoUnit.MINUTES.between(
                         invoice.getCheckedInAt(), now
                     );
-                    status = minutesSinceCheckIn <= 90 ? "OCCUPIED" : "OVERTIME";
+                    status = "OCCUPIED";
                 } else {
                     status = "OCCUPIED";
                 }

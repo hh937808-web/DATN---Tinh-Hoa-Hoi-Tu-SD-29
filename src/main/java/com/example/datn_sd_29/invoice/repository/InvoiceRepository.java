@@ -48,7 +48,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
            nativeQuery = true)
     List<Object[]> findRecentInvoicesRaw(org.springframework.data.domain.Pageable pageable);
 
-    // Overtime detection query - Requirements 1.4, 7.2
+    // Query for invoices by status and check-in time
     @Query("SELECT i FROM Invoice i WHERE i.invoiceStatus = :status AND i.checkedInAt < :threshold")
     List<Invoice> findByInvoiceStatusAndCheckedInAtBefore(@Param("status") String status, 
                                                            @Param("threshold") Instant threshold);

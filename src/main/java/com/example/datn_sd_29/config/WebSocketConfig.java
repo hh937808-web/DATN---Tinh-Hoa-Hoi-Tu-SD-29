@@ -16,7 +16,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * WebSocket configuration for real-time overtime alerts
+ * WebSocket configuration for real-time updates
  * Implements STOMP protocol over WebSocket with SockJS fallback
  * Uses STOMP CONNECT header authentication and topic-level authorization
  */
@@ -53,14 +53,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Register STOMP endpoint for overtime alerts with SockJS fallback
-        // Authentication happens at handshake level via query parameter
-        registry.addEndpoint("/ws/overtime-alerts")
-                .setAllowedOrigins(allowedOrigins.split(","))
-                .addInterceptors(authInterceptor)
-                .withSockJS();
-        
         // Register general WebSocket endpoint for admin dashboard
+        // Authentication happens at handshake level via query parameter
         registry.addEndpoint("/ws")
                 .setAllowedOrigins(allowedOrigins.split(","))
                 .addInterceptors(authInterceptor)

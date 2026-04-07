@@ -143,11 +143,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/kitchen/**").hasAnyRole("KITCHEN", "ADMIN")
                         
                         // ========================================
-                        // STAFF + RECEPTION + ADMIN - Overtime Alerts
-                        // ========================================
-                        .requestMatchers("/api/overtime/alerts/**").hasAnyRole("STAFF", "RECEPTION", "ADMIN")
-                        
-                        // ========================================
                         // STAFF + RECEPTION + ADMIN - Invoice & Table Management
                         // ĐẶT SAU các rule cụ thể để tránh conflict
                         // ========================================

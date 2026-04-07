@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for PaymentService table status clearing functionality
- * Tests Requirements 4.1, 4.2, 4.3, 4.4 from table-overtime-smart-alerts spec
+ * Tests table status management when cancelling invoices
  */
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTableStatusTest {
