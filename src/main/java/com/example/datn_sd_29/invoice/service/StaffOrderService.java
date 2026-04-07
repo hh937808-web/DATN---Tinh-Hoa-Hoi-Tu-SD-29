@@ -2,6 +2,8 @@ package com.example.datn_sd_29.invoice.service;
 
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
+import com.example.datn_sd_29.employee.entity.Employee;
+import com.example.datn_sd_29.employee.repository.EmployeeRepository;
 import com.example.datn_sd_29.invoice.dto.InvoiceGroupResponse;
 import com.example.datn_sd_29.invoice.dto.InvoiceItemResponse;
 import com.example.datn_sd_29.invoice.dto.OrderItemRequest;
@@ -19,9 +21,16 @@ import com.example.datn_sd_29.product_combo.entity.ProductCombo;
 import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -40,7 +49,12 @@ public class StaffOrderService {
     private final ProductRepository productRepository;
     private final ProductComboRepository productComboRepository;
     private final DiningTableRepository diningTableRepository;
+    private final EmployeeRepository employeeRepository;
     private final com.example.datn_sd_29.common.service.KitchenBroadcastService kitchenBroadcastService;
+    private final SimpMessagingTemplate messagingTemplate;
+    
+    @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     public List<InvoiceGroupResponse> getInProgressInvoices() {
         List<Invoice> invoices = invoiceRepository.findAllInProgressInvoicesWithCustomer();
@@ -48,6 +62,180 @@ public class StaffOrderService {
         return invoices.stream()
                 .map(this::mapToInvoiceGroupResponse)
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get current employee from authentication context
+     * 
+     * Behavior:
+     * - If security is ENABLED: Get employee from JWT token
+     * - If security is DISABLED: Get employee from X-Employee-Username header
+     */
+    private Employee getCurrentEmployee() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        
+        // If security is DISABLED, get employee from custom header
+        if (!securityEnabled) {
+            try {
+                ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attributes != null) {
+                    HttpServletRequest request = attributes.getRequest();
+                    String username = request.getHeader("X-Employee-Username");
+                    
+                    System.out.println("🔍 DEBUG getCurrentEmployee() - Security DISABLED");
+                    System.out.println("   X-Employee-Username header: " + username);
+                    
+                    if (username != null && !username.trim().isEmpty()) {
+                        Employee emp = employeeRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
+                        System.out.println("   Found employee: " + (emp != null ? emp.getFullName() + " (ID: " + emp.getId() + ")" : "NULL"));
+                        return emp;
+                    } else {
+                        System.out.println("   ❌ Header is null or empty!");
+                    }
+                } else {
+                    System.out.println("   ❌ RequestAttributes is null!");
+                }
+            } catch (Exception e) {
+                System.err.println("❌ Failed to get employee from header: " + e.getMessage());
+                e.printStackTrace();
+            }
+            return null;
+        }
+        
+        // If security is ENABLED but no authentication, return null
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        
+        // Get employee from JWT token (JWT stores username as subject for employees)
+        String username = auth.getName();
+        return employeeRepository.findByUsernameIgnoreCase(username).orElse(null);
+    }
+    
+    /**
+     * Assign employee to invoice if not already assigned
+     * Check if current employee has permission to order for this invoice
+     * 
+     * Behavior:
+     * - If security is DISABLED: Always assign employee if available, but never block
+     * - If security is ENABLED: Assign employee and enforce access control
+     */
+    private void assignAndCheckEmployee(Invoice invoice) {
+        Employee currentEmployee = getCurrentEmployee();
+        
+        // If no authentication (no employee logged in), allow operation
+        if (currentEmployee == null) {
+            return;
+        }
+        
+        // If invoice has no employee assigned, assign current employee
+        if (invoice.getEmployee() == null) {
+            invoice.setEmployee(currentEmployee);
+            invoiceRepository.save(invoice);
+            return;
+        }
+        
+        // If invoice already has an employee assigned
+        if (!invoice.getEmployee().getId().equals(currentEmployee.getId())) {
+            // If security is DISABLED, allow operation (don't block)
+            if (!securityEnabled) {
+                return;
+            }
+            
+            // If security is ENABLED, block the operation
+            String assignedStaffName = invoice.getEmployee().getFullName();
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Bàn này đang được phục vụ bởi nhân viên " + assignedStaffName + ". " +
+                "Chỉ nhân viên đã order mới có thể tiếp tục order cho bàn này."
+            );
+        }
+    }
+    
+    /**
+     * Validate and claim table for current staff (using serving_staff_id)
+     * 
+     * Rules:
+     * - If invoice.servingStaff == null → claim table (set to current staff)
+     * - If invoice.servingStaff == currentStaff → allow (already owned)
+     * - If invoice.servingStaff != currentStaff → throw 403 Forbidden
+     * 
+     * @param invoice The invoice to validate
+     * @throws ResponseStatusException 403 if table is claimed by another staff
+     */
+    private void validateAndClaimTable(Invoice invoice) {
+        Employee currentEmployee = getCurrentEmployee();
+        
+        System.out.println("🔍 DEBUG validateAndClaimTable()");
+        System.out.println("   Current employee: " + (currentEmployee != null ? currentEmployee.getFullName() + " (ID: " + currentEmployee.getId() + ")" : "NULL"));
+        System.out.println("   Invoice serving staff: " + (invoice.getServingStaff() != null ? invoice.getServingStaff().getFullName() + " (ID: " + invoice.getServingStaff().getId() + ")" : "NULL"));
+        
+        // If table already claimed by another staff, ALWAYS BLOCK (even if currentEmployee is null)
+        if (invoice.getServingStaff() != null) {
+            if (currentEmployee == null) {
+                // No employee context but table is claimed → block
+                String claimedByStaffName = invoice.getServingStaff().getFullName();
+                System.out.println("   ❌ BLOCKING: No employee context but table owned by " + claimedByStaffName);
+                throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Bàn này đang được phục vụ bởi nhân viên " + claimedByStaffName + ". " +
+                    "Chỉ nhân viên đã order mới có thể tiếp tục order cho bàn này."
+                );
+            }
+            
+            if (!invoice.getServingStaff().getId().equals(currentEmployee.getId())) {
+                // Table claimed by different staff → block
+                String claimedByStaffName = invoice.getServingStaff().getFullName();
+                System.out.println("   ❌ BLOCKING: Table owned by " + claimedByStaffName);
+                throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Bàn này đang được phục vụ bởi nhân viên " + claimedByStaffName + ". " +
+                    "Chỉ nhân viên đã order mới có thể tiếp tục order cho bàn này."
+                );
+            }
+            
+            // Table already claimed by current staff → allow
+            System.out.println("   ✅ Table already owned by current staff - allowing");
+            return;
+        }
+        
+        // Table not yet claimed
+        if (currentEmployee == null) {
+            // No employee context and table not claimed → allow but don't claim
+            System.out.println("   ⚠️ No current employee - allowing operation without claiming");
+            return;
+        }
+        
+        // Claim table for current staff
+        System.out.println("   ✅ Claiming table for: " + currentEmployee.getFullName());
+        invoice.setServingStaff(currentEmployee);
+        invoiceRepository.save(invoice);
+        
+        // Broadcast table claimed via WebSocket
+        broadcastTableClaimed(invoice.getId(), currentEmployee.getId(), currentEmployee.getFullName());
+    }
+    
+    /**
+     * Broadcast table status update via WebSocket
+     * 
+     * @param invoiceId The invoice ID
+     * @param staffId The staff ID who claimed the table
+     * @param staffName The staff name
+     */
+    private void broadcastTableClaimed(Integer invoiceId, Integer staffId, String staffName) {
+        try {
+            java.util.Map<String, Object> message = new java.util.HashMap<>();
+            message.put("invoiceId", invoiceId);
+            message.put("staffId", staffId);
+            message.put("staffName", staffName);
+            message.put("action", "CLAIMED");
+            message.put("timestamp", java.time.Instant.now().toString());
+            
+            messagingTemplate.convertAndSend("/topic/table-status", message);
+            System.out.println("✅ Broadcasted table claimed: Invoice #" + invoiceId + " by " + staffName);
+        } catch (Exception e) {
+            System.err.println("❌ Failed to broadcast table status: " + e.getMessage());
+        }
     }
 
     private InvoiceGroupResponse mapToInvoiceGroupResponse(Invoice invoice) {
@@ -77,15 +265,41 @@ public class StaffOrderService {
                         : BigDecimal.ZERO)
                 .checkedInAt(invoice.getCheckedInAt())
                 .tables(tableInfos)
+                .servingStaffId(invoice.getServingStaff() != null ? invoice.getServingStaff().getId() : null)
+                .servingStaffName(invoice.getServingStaff() != null ? invoice.getServingStaff().getFullName() : null)
                 .build();
     }
 
     public List<StaffTableResponse> getServingTables() {
-        List<DiningTable> tables = diningTableRepository.findAll();
-        return tables.stream()
-                .filter(t -> TABLE_STATUS_IN_USE.equals(t.getTableStatus()))
-                .map(this::mapToStaffTableResponse)
-                .collect(Collectors.toList());
+        // Query all IN_PROGRESS invoices with their tables and serving staff
+        List<Invoice> invoices = invoiceRepository.findByInvoiceStatus(STATUS_IN_PROGRESS);
+        
+        List<StaffTableResponse> responses = new ArrayList<>();
+        
+        for (Invoice invoice : invoices) {
+            // Get tables for this invoice
+            List<InvoiceDiningTable> invoiceTables = invoiceDiningTableRepository
+                    .findByInvoiceIdWithTable(invoice.getId());
+            
+            for (InvoiceDiningTable idt : invoiceTables) {
+                DiningTable table = idt.getDiningTable();
+                
+                StaffTableResponse response = StaffTableResponse.builder()
+                        .tableId(table.getId())
+                        .tableName(table.getTableName())
+                        .floor(table.getFloor())
+                        .seatingCapacity(table.getSeatingCapacity())
+                        .tableStatus(table.getTableStatus())
+                        .invoiceId(invoice.getId())
+                        .servingStaffId(invoice.getServingStaff() != null ? invoice.getServingStaff().getId() : null)
+                        .servingStaffName(invoice.getServingStaff() != null ? invoice.getServingStaff().getFullName() : null)
+                        .build();
+                
+                responses.add(response);
+            }
+        }
+        
+        return responses;
     }
 
     public StaffTableResponse getTableById(Integer tableId) {
@@ -107,7 +321,7 @@ public class StaffOrderService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public void addItemsToInvoice(Integer invoiceId, List<OrderItemRequest> items) {
         if (invoiceId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invoice id is required");
@@ -123,6 +337,12 @@ public class StaffOrderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                     "Invoice is not in progress");
         }
+        
+        // Validate and claim table (using serving_staff_id)
+        validateAndClaimTable(invoice);
+        
+        // Also assign employee for cashier tracking
+        assignAndCheckEmployee(invoice);
         
         if (items == null || items.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Items is required");
@@ -196,7 +416,7 @@ public class StaffOrderService {
         kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", toSave.size());
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public void addItemsToTable(Integer tableId, List<OrderItemRequest> items) {
         if (tableId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Table id is required");
@@ -211,6 +431,12 @@ public class StaffOrderService {
         }
 
         Invoice invoice = getSingleInProgressInvoice(tableId);
+        
+        // Validate and claim table (using serving_staff_id)
+        validateAndClaimTable(invoice);
+        
+        // Also assign employee for cashier tracking
+        assignAndCheckEmployee(invoice);
 
         List<InvoiceItem> toSave = new ArrayList<>();
         BigDecimal addedSubtotal = BigDecimal.ZERO;

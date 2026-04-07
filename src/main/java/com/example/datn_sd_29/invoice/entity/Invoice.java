@@ -44,6 +44,10 @@ public class Invoice {
     @JoinColumn(name = "employee_id")
     private Employee employee;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "serving_staff_id")
+    private Employee servingStaff;
+
     @Size(max = 20)
     @Column(name = "invoice_channel", length = 20)
     private String invoiceChannel;
@@ -69,6 +73,14 @@ public class Invoice {
     @Size(max = 1000)
     @Column(name = "food_note", length = 1000)
     private String foodNote;
+
+    @Size(max = 200)
+    @Column(name = "guest_name", length = 200)
+    private String guestName;
+
+    @Size(max = 20)
+    @Column(name = "guest_phone", length = 20)
+    private String guestPhone;
 
     @Column(name = "checked_in_at")
     private Instant checkedInAt;

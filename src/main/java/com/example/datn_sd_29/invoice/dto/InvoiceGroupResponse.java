@@ -21,6 +21,8 @@ public class InvoiceGroupResponse {
     private BigDecimal subtotalAmount;
     private Instant checkedInAt;
     private List<TableInfo> tables;
+    private Integer servingStaffId;
+    private String servingStaffName;
 
     @Data
     @Builder

@@ -15,4 +15,11 @@ public class StaffTableResponse {
     private Integer floor;
     private Integer seatingCapacity;
     private String tableStatus;
+    
+    // Invoice information
+    private Integer invoiceId;
+    
+    // Serving staff information
+    private Integer servingStaffId;
+    private String servingStaffName;
 }

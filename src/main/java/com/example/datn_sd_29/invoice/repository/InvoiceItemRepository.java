@@ -13,6 +13,9 @@ import java.util.List;
 
 @Repository
 public interface InvoiceItemRepository extends JpaRepository<InvoiceItem, Integer> {
+
+
+    List<InvoiceItem> findByInvoiceId(Integer invoiceId);
     @Query("""
         select ii
         from InvoiceItem ii

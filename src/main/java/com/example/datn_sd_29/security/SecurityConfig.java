@@ -17,7 +17,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
@@ -27,7 +26,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // Development mode - tất cả APIs public
+        // Development mode - tất cả APIs public, KHÔNG add JWT filter
         if (!securityEnabled) {
             http
                     .csrf(AbstractHttpConfigurer::disable)
@@ -40,10 +39,11 @@ public class SecurityConfig {
                     .authorizeHttpRequests(auth -> auth
                             .anyRequest().permitAll()
                     );
+            // KHÔNG add jwtAuthFilter khi security tắt
             return http.build();
         }
         
-        // Production mode - role-based security
+        // Production mode - role-based security với JWT filter
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
@@ -61,14 +61,20 @@ public class SecurityConfig {
                                 "/api/public/**",         // Public notification endpoints
                                 "/public/**",             // Direct public access
                                 "/ws/**",                 // WebSocket endpoints (authentication handled by WebSocketAuthInterceptor)
-                                "/error",                 // Error page
-                                "/api/kitchen/**"         // Kitchen staff update status
+                                "/error"                  // Error page
                         ).permitAll()
                         
                         // ========================================
-                        // CUSTOMER ENDPOINTS - Public access
+                        // CUSTOMER ENDPOINTS - Phân quyền rõ ràng
                         // ========================================
-                        .requestMatchers("/api/customers/**").permitAll()
+                        // ADMIN only - Customer management
+                        .requestMatchers("/api/customers/search").hasRole("ADMIN")
+                        .requestMatchers("/api/customers/sort").hasRole("ADMIN")
+                        .requestMatchers("/api/customers/*/status").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/customers").hasRole("ADMIN")
+                        
+                        // Authenticated USER - Customer profile
+                        .requestMatchers("/api/customers/profile").authenticated()
                         
                         // ========================================
                         // PUBLIC GET ENDPOINTS - Khách xem menu (không cần đăng nhập)
@@ -81,17 +87,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/customer-vouchers/**").permitAll()
                         
                         // ========================================
-                        // ADMIN + RECEPTION - Dashboard & Reports
-                        // ========================================
-                        .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "RECEPTION")
-                        
-                        // ========================================
-                        // ADMIN ONLY
+                        // ADMIN ONLY - Management Endpoints (ĐẶT TRƯỚC để ưu tiên)
                         // ========================================
                         .requestMatchers("/api/debug/**").hasRole("ADMIN")
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         
-                        // Product Management
+                        // Employee Management - ADMIN ONLY
+                        .requestMatchers("/api/employees/**").hasRole("ADMIN")
+                        
+                        // Product Management - ADMIN ONLY
                         .requestMatchers(HttpMethod.POST, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
@@ -100,7 +104,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/product-combos/**").hasRole("ADMIN")
                         .requestMatchers("/api/product-combo-items/**").hasRole("ADMIN")
                         
-                        // Voucher Management
+                        // Voucher Management - ADMIN ONLY
                         .requestMatchers(HttpMethod.POST, "/api/product-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/product-vouchers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/product-vouchers/**").hasRole("ADMIN")
@@ -112,27 +116,43 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/customer-vouchers/**").hasRole("ADMIN")
                         
                         // ========================================
-                        // RECEPTION ONLY
+                        // ADMIN + RECEPTION - Dashboard & Reports
                         // ========================================
-                        .requestMatchers("/api/reception/payment/**").hasRole("RECEPTION")
-                        .requestMatchers("/api/walk-in/**").hasRole("RECEPTION")
-                        .requestMatchers("/api/reservation/all").hasRole("RECEPTION")  // Xem tất cả đặt bàn
-                        .requestMatchers("/api/reservation/pending").hasRole("RECEPTION")  // Xem pending reservations
-                        .requestMatchers("/api/reservation/*/confirm").hasRole("RECEPTION")  // Xác nhận đặt bàn
-                        .requestMatchers("/api/reservation/*/alternative-tables").hasRole("RECEPTION")  // Xem bàn thay thế
-                        .requestMatchers("/api/reservation/*/recommended-tables").hasRole("RECEPTION")  // Xem bàn đề xuất
-                        .requestMatchers("/api/reservation/*/reassign-tables").hasRole("RECEPTION")  // Đổi bàn
-                        .requestMatchers("/api/reservation/*/check-in").hasRole("RECEPTION")  // Check-in
+                        .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "RECEPTION")
                         
                         // ========================================
-                        // STAFF + RECEPTION - Overtime Alerts
+                        // RECEPTION + ADMIN - Reception Specific Endpoints
                         // ========================================
-                        .requestMatchers("/api/overtime/alerts/**").hasAnyRole("STAFF", "RECEPTION")
+                        .requestMatchers("/api/reception/**").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/walk-in/**").hasAnyRole("RECEPTION", "ADMIN")
+                        
+                        // Reservation Management - RECEPTION + ADMIN
+                        .requestMatchers("/api/reservation/all").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/pending").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/confirm").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/alternative-tables").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/recommended-tables").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/reassign-tables").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/check-in").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/*/cancel").hasAnyRole("RECEPTION", "ADMIN")
+                        .requestMatchers("/api/reservation/search").hasAnyRole("RECEPTION", "ADMIN")
                         
                         // ========================================
-                        // STAFF ONLY
+                        // KITCHEN + ADMIN - Kitchen Management
                         // ========================================
-                        .requestMatchers("/api/tables/**").hasRole("STAFF")
+                        .requestMatchers("/api/kitchen/**").hasAnyRole("KITCHEN", "ADMIN")
+                        
+                        // ========================================
+                        // STAFF + RECEPTION + ADMIN - Overtime Alerts
+                        // ========================================
+                        .requestMatchers("/api/overtime/alerts/**").hasAnyRole("STAFF", "RECEPTION", "ADMIN")
+                        
+                        // ========================================
+                        // STAFF + RECEPTION + ADMIN - Invoice & Table Management
+                        // ĐẶT SAU các rule cụ thể để tránh conflict
+                        // ========================================
+                        .requestMatchers("/api/invoices/**").hasAnyRole("STAFF", "RECEPTION", "ADMIN")
+                        .requestMatchers("/api/tables/**").hasAnyRole("STAFF", "RECEPTION", "ADMIN")
                         
                         // ========================================
                         // USER (Customer) - Authenticated users
@@ -144,6 +164,7 @@ public class SecurityConfig {
                         // ========================================
                         .anyRequest().authenticated()
                 )
+                // CHỈ add JWT filter khi security được bật
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
