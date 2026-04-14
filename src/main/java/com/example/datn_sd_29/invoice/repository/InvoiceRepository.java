@@ -92,6 +92,13 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Integer> {
            "ORDER BY i.reservedAt ASC")
     List<Invoice> findPendingConfirmationReservations();
 
+    // Find all reservations (all statuses for admin monitoring)
+    @Query("SELECT i FROM Invoice i " +
+           "WHERE i.reservationCode IS NOT NULL " +
+           "AND i.invoiceStatus IN ('PENDING_CONFIRMATION', 'RESERVED', 'CONFIRMED', 'IN_PROGRESS', 'CANCELLED', 'NO_SHOW') " +
+           "ORDER BY i.reservedAt DESC")
+    List<Invoice> findAllReservationsForAdmin();
+
     // Find invoices by status
     List<Invoice> findByInvoiceStatus(String invoiceStatus);
 
