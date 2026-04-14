@@ -1,4 +1,4 @@
-package com.example.datn_sd_29.FeedBack.enums;
+package com.example.datn_sd_29.feedback.enums;
 
 
 import lombok.Getter;

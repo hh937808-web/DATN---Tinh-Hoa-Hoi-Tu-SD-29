@@ -1,8 +1,8 @@
-package com.example.datn_sd_29.FeedBack.controller;
+package com.example.datn_sd_29.feedback.controller;
 
-import com.example.datn_sd_29.FeedBack.dto.ReviewRequest;
-import com.example.datn_sd_29.FeedBack.dto.ReviewResponse;
-import com.example.datn_sd_29.FeedBack.service.ReviewService;
+import com.example.datn_sd_29.feedback.dto.ReviewRequest;
+import com.example.datn_sd_29.feedback.dto.ReviewResponse;
+import com.example.datn_sd_29.feedback.service.ReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

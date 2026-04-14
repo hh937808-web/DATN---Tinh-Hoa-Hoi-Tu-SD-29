@@ -1,4 +1,4 @@
-package com.example.datn_sd_29.FeedBack.dto;
+package com.example.datn_sd_29.feedback.dto;
 
 import lombok.Builder;
 import lombok.Data;

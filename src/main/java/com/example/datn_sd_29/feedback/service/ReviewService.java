@@ -1,10 +1,10 @@
-package com.example.datn_sd_29.FeedBack.service;
+package com.example.datn_sd_29.feedback.service;
 
-import com.example.datn_sd_29.FeedBack.dto.ReviewRequest;
-import com.example.datn_sd_29.FeedBack.dto.ReviewResponse;
-import com.example.datn_sd_29.FeedBack.entity.Review;
-import com.example.datn_sd_29.FeedBack.enums.ReviewStatus;
-import com.example.datn_sd_29.FeedBack.repository.ReviewRepository;
+import com.example.datn_sd_29.feedback.dto.ReviewRequest;
+import com.example.datn_sd_29.feedback.dto.ReviewResponse;
+import com.example.datn_sd_29.feedback.entity.Review;
+import com.example.datn_sd_29.feedback.enums.ReviewStatus;
+import com.example.datn_sd_29.feedback.repository.ReviewRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

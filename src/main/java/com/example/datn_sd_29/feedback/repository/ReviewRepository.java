@@ -1,12 +1,11 @@
-package com.example.datn_sd_29.FeedBack.repository;
+package com.example.datn_sd_29.feedback.repository;
 
 
 
-import com.example.datn_sd_29.FeedBack.entity.Review;
-import com.example.datn_sd_29.FeedBack.enums.ReviewStatus;
+import com.example.datn_sd_29.feedback.entity.Review;
+import com.example.datn_sd_29.feedback.enums.ReviewStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ReviewRepository extends JpaRepository<Review, Integer> {

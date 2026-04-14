@@ -1,6 +1,6 @@
-package com.example.datn_sd_29.FeedBack.entity;
+package com.example.datn_sd_29.feedback.entity;
 
-import com.example.datn_sd_29.FeedBack.enums.ReviewStatus;
+import com.example.datn_sd_29.feedback.enums.ReviewStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
