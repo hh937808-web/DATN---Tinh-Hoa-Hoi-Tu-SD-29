@@ -3,9 +3,14 @@ package com.example.datn_sd_29.media.service;
 import com.example.datn_sd_29.media.dto.ImageResponse;
 import com.example.datn_sd_29.media.entity.Image;
 import com.example.datn_sd_29.media.repository.ImageRepository;
+import com.example.datn_sd_29.product_combo.entity.ProductCombo;
+import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.Base64;
 import java.util.List;
 
 @Service
@@ -13,6 +18,7 @@ import java.util.List;
 public class ImageService {
 
     private final ImageRepository imageRepository;
+    private final ProductComboRepository productComboRepository;
 
 
     public List<ImageResponse> getProductImages(Integer productId) {
@@ -52,5 +58,32 @@ public class ImageService {
                 .orElseThrow(() -> new RuntimeException("Primary image not found"));
 
         return new ImageResponse(image);
+    }
+
+    public ImageResponse uploadComboImage(Integer comboId, MultipartFile file) throws IOException {
+        
+        ProductCombo combo = productComboRepository.findById(comboId)
+                .orElseThrow(() -> new RuntimeException("Combo not found with id: " + comboId));
+
+        // Set all existing images to non-primary
+        List<Image> existingImages = imageRepository.findByProductCombo_IdOrderByIsPrimaryDesc(comboId);
+        existingImages.forEach(img -> img.setIsPrimary(false));
+        imageRepository.saveAll(existingImages);
+
+        // Convert file to base64 data URL
+        byte[] fileBytes = file.getBytes();
+        String base64Image = Base64.getEncoder().encodeToString(fileBytes);
+        String contentType = file.getContentType();
+        String dataUrl = "data:" + contentType + ";base64," + base64Image;
+
+        // Create new image
+        Image image = new Image();
+        image.setProductCombo(combo);
+        image.setImageUrl(dataUrl);
+        image.setIsPrimary(true);
+
+        Image savedImage = imageRepository.save(image);
+
+        return new ImageResponse(savedImage);
     }
 }

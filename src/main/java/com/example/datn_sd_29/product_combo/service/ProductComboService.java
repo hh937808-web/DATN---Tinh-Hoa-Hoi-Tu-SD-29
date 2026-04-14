@@ -23,6 +23,13 @@ public class ProductComboService {
                 .toList();
     }
 
+    public List<ProductComboResponse> getActiveProductCombos() {
+        return productComboRepository.findByIsActiveTrue()
+                .stream()
+                .map(ProductComboResponse::new)
+                .toList();
+    }
+
     public ProductComboResponse createProductCombo(ProductComboRequest request) {
         ProductCombo combo = new ProductCombo();
         combo.setComboName(request.getComboName());

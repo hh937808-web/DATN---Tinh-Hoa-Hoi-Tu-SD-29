@@ -7,6 +7,7 @@ import com.example.datn_sd_29.product_combo.service.ProductComboItemService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,6 +39,15 @@ public class ProductComboItemController {
                         "Thêm sản phẩm vào combo thành công",
                         productComboItemService.create(request)
                 )
+        );
+    }
+
+    @DeleteMapping("/combo/{comboId}")
+    @Transactional
+    public ResponseEntity<ApiResponse<Void>> deleteByComboId(@PathVariable Integer comboId) {
+        productComboItemService.deleteByComboId(comboId);
+        return ResponseEntity.ok(
+                ApiResponse.success("Xóa các món trong combo thành công", null)
         );
     }
 }

@@ -6,7 +6,9 @@ import com.example.datn_sd_29.media.service.ImageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -65,5 +67,23 @@ public class ImageController {
         return ResponseEntity.ok(
                 ApiResponse.success("Get primary combo image successfully", image)
         );
+    }
+
+    @PostMapping("/combo/{comboId}")
+    public ResponseEntity<ApiResponse<ImageResponse>> uploadComboImage(
+            @PathVariable Integer comboId,
+            @RequestParam("image") MultipartFile file
+    ) {
+        try {
+            ImageResponse image = imageService.uploadComboImage(comboId, file);
+
+            return ResponseEntity.ok(
+                    ApiResponse.success("Upload combo image successfully", image)
+            );
+        } catch (IOException e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Failed to upload image: " + e.getMessage(), null)
+            );
+        }
     }
 }

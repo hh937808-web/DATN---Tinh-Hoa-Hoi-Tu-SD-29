@@ -28,6 +28,16 @@ public class ProductComboController {
         );
     }
 
+    @GetMapping("/active")
+    public ResponseEntity<ApiResponse<List<ProductComboResponse>>> getActiveProductCombos() {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Get active product combo list successfully!",
+                        productComboService.getActiveProductCombos()
+                )
+        );
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<ProductComboResponse>> createProductCombo(
             @Valid @RequestBody ProductComboRequest request

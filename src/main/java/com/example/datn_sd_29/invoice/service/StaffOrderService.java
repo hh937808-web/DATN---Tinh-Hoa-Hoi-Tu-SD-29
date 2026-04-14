@@ -52,6 +52,7 @@ public class StaffOrderService {
     private final EmployeeRepository employeeRepository;
     private final com.example.datn_sd_29.common.service.KitchenBroadcastService kitchenBroadcastService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final com.example.datn_sd_29.product_version.service.ProductVersionService productVersionService;
     
     @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
     private boolean securityEnabled;
@@ -382,6 +383,9 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Product not found"));
                 invoiceItem.setProduct(product);
                 invoiceItem.setUnitPrice(product.getUnitPrice());
+                
+                String versionId = productVersionService.createProductSnapshot(product);
+                invoiceItem.setProductVersionId(versionId);
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productComboId is required");
@@ -391,6 +395,9 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Combo not found"));
                 invoiceItem.setProductCombo(combo);
                 invoiceItem.setUnitPrice(combo.getComboPrice());
+                
+                String versionId = productVersionService.createComboSnapshot(combo);
+                invoiceItem.setProductVersionId(versionId);
             } else {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid itemType");
             }
@@ -463,6 +470,9 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Product not found"));
                 invoiceItem.setProduct(product);
                 invoiceItem.setUnitPrice(product.getUnitPrice());
+                
+                String versionId = productVersionService.createProductSnapshot(product);
+                invoiceItem.setProductVersionId(versionId);
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productComboId is required");
@@ -472,6 +482,9 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Combo not found"));
                 invoiceItem.setProductCombo(combo);
                 invoiceItem.setUnitPrice(combo.getComboPrice());
+                
+                String versionId = productVersionService.createComboSnapshot(combo);
+                invoiceItem.setProductVersionId(versionId);
             } else {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid itemType");
             }
@@ -534,13 +547,24 @@ public class StaffOrderService {
                     InvoiceItemResponse response = new InvoiceItemResponse();
                     response.setId(item.getId());
                     
-                    // Get item name from product or combo
-                    if (item.getProduct() != null) {
-                        response.setItemName(item.getProduct().getProductName());
-                    } else if (item.getProductCombo() != null) {
-                        response.setItemName(item.getProductCombo().getComboName());
+                    String itemName = null;
+                    if (item.getProductVersionId() != null) {
+                        com.example.datn_sd_29.product_version.document.ProductVersionDocument version = 
+                                productVersionService.getVersionById(item.getProductVersionId());
+                        if (version != null) {
+                            itemName = version.getItemName();
+                        }
                     }
                     
+                    if (itemName == null) {
+                        if (item.getProduct() != null) {
+                            itemName = item.getProduct().getProductName();
+                        } else if (item.getProductCombo() != null) {
+                            itemName = item.getProductCombo().getComboName();
+                        }
+                    }
+                    
+                    response.setItemName(itemName);
                     response.setQuantity(item.getQuantity());
                     response.setPrice(item.getUnitPrice());
                     response.setStatus(item.getStatus().name());

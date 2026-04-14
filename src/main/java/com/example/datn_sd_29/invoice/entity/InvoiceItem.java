@@ -53,4 +53,8 @@ public class InvoiceItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dining_table_id")
     private DiningTable diningTable;
+    
+    @Size(max = 100)
+    @Column(name = "product_version_id", length = 100)
+    private String productVersionId;
 }

@@ -10,6 +10,7 @@ import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import com.example.datn_sd_29.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -51,5 +52,9 @@ public class ProductComboItemService {
         ProductComboItem saved = productComboItemRepository.save(item);
 
         return new ProductComboItemResponse(saved);
+    }
+
+    public void deleteByComboId(Integer comboId) {
+        productComboItemRepository.deleteByProductComboId(comboId);
     }
 }
