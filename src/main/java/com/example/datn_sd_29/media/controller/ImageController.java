@@ -86,4 +86,22 @@ public class ImageController {
             );
         }
     }
+    
+    @PostMapping("/product/{productId}")
+    public ResponseEntity<ApiResponse<ImageResponse>> uploadProductImage(
+            @PathVariable Integer productId,
+            @RequestParam("file") MultipartFile file
+    ) {
+        try {
+            ImageResponse image = imageService.uploadProductImage(productId, file);
+
+            return ResponseEntity.ok(
+                    ApiResponse.success("Upload product image successfully", image)
+            );
+        } catch (IOException e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Failed to upload image: " + e.getMessage(), null)
+            );
+        }
+    }
 }

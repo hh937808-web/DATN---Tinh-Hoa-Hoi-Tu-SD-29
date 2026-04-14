@@ -15,6 +15,7 @@ public class ProductResponse {
     private String description;
     private ProductStatus availabilityStatus;
     private Integer stockQuantity;
+    private String imageUrl;
 
     public ProductResponse() {
     }
@@ -83,5 +84,13 @@ public class ProductResponse {
 
     public void setStockQuantity(Integer stockQuantity) {
         this.stockQuantity = stockQuantity;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 }

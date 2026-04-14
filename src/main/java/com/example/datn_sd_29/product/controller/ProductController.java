@@ -28,6 +28,14 @@ public class ProductController {
                 ApiResponse.success("Get all products successfully!", products)
         );
     }
+    
+    @GetMapping("/active")
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getActiveProducts() {
+        List<ProductResponse> products = productService.getActiveProducts();
+        return ResponseEntity.ok(
+                ApiResponse.success("Get active products successfully!", products)
+        );
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(

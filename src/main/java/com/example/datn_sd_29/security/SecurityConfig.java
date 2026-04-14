@@ -104,6 +104,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/product-combos/**").hasRole("ADMIN")
                         .requestMatchers("/api/product-combo-items/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/images/combo/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/images/product/**").hasRole("ADMIN")
                         
                         // Voucher Management - ADMIN ONLY
                         .requestMatchers(HttpMethod.POST, "/api/product-vouchers/**").hasRole("ADMIN")

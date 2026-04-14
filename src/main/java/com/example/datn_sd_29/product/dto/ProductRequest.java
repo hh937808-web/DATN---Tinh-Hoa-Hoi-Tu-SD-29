@@ -29,10 +29,6 @@ public class ProductRequest {
     @NotNull(message = "Availability status is required")
     private ProductStatus availabilityStatus;
 
-    @NotNull(message = "Stock quantity is required")
-    @Min(value = 0, message = "Stock must be >= 0")
-    private Integer stockQuantity;
-
     public ProductRequest() {
     }
 
@@ -74,13 +70,5 @@ public class ProductRequest {
 
     public void setAvailabilityStatus(ProductStatus availabilityStatus) {
         this.availabilityStatus = availabilityStatus;
-    }
-
-    public Integer getStockQuantity() {
-        return stockQuantity;
-    }
-
-    public void setStockQuantity(Integer stockQuantity) {
-        this.stockQuantity = stockQuantity;
     }
 }

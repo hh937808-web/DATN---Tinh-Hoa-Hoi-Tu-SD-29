@@ -3,6 +3,8 @@ package com.example.datn_sd_29.media.service;
 import com.example.datn_sd_29.media.dto.ImageResponse;
 import com.example.datn_sd_29.media.entity.Image;
 import com.example.datn_sd_29.media.repository.ImageRepository;
+import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.repository.ProductRepository;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
 import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ public class ImageService {
 
     private final ImageRepository imageRepository;
     private final ProductComboRepository productComboRepository;
+    private final ProductRepository productRepository;
 
 
     public List<ImageResponse> getProductImages(Integer productId) {
@@ -79,6 +82,33 @@ public class ImageService {
         // Create new image
         Image image = new Image();
         image.setProductCombo(combo);
+        image.setImageUrl(dataUrl);
+        image.setIsPrimary(true);
+
+        Image savedImage = imageRepository.save(image);
+
+        return new ImageResponse(savedImage);
+    }
+    
+    public ImageResponse uploadProductImage(Integer productId, MultipartFile file) throws IOException {
+        
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
+
+        // Set all existing images to non-primary
+        List<Image> existingImages = imageRepository.findByProduct_IdOrderByIsPrimaryDesc(productId);
+        existingImages.forEach(img -> img.setIsPrimary(false));
+        imageRepository.saveAll(existingImages);
+
+        // Convert file to base64 data URL
+        byte[] fileBytes = file.getBytes();
+        String base64Image = Base64.getEncoder().encodeToString(fileBytes);
+        String contentType = file.getContentType();
+        String dataUrl = "data:" + contentType + ";base64," + base64Image;
+
+        // Create new image
+        Image image = new Image();
+        image.setProduct(product);
         image.setImageUrl(dataUrl);
         image.setIsPrimary(true);
 

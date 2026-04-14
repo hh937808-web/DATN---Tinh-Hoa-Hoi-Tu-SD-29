@@ -1,5 +1,7 @@
 package com.example.datn_sd_29.product.service;
 
+import com.example.datn_sd_29.media.entity.Image;
+import com.example.datn_sd_29.media.repository.ImageRepository;
 import com.example.datn_sd_29.product.entity.Product;
 import com.example.datn_sd_29.product.enums.ProductCategory;
 import com.example.datn_sd_29.product.enums.ProductStatus;
@@ -19,12 +21,21 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ImageRepository imageRepository;
 
     @Transactional(readOnly = true)
     public List<ProductResponse> getAllProducts() {
         return productRepository.findAll()
                 .stream()
-                .map(ProductResponse::new)
+                .map(this::toProductResponse)
+                .toList();
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ProductResponse> getActiveProducts() {
+        return productRepository.findByAvailabilityStatusNot(ProductStatus.DISCONTINUED)
+                .stream()
+                .map(this::toProductResponse)
                 .toList();
     }
 
@@ -36,10 +47,9 @@ public class ProductService {
         product.setUnitPrice(request.getUnitPrice());
         product.setDescription(request.getDescription());
         product.setAvailabilityStatus(request.getAvailabilityStatus());
-        product.setStockQuantity(request.getStockQuantity());
         Product saved = productRepository.save(product);
 
-        return new ProductResponse(saved);
+        return toProductResponse(saved);
     }
 
     public ProductResponse updateProduct(Integer id, ProductRequest request) {
@@ -54,10 +64,9 @@ public class ProductService {
         product.setUnitPrice(request.getUnitPrice());
         product.setDescription(request.getDescription());
         product.setAvailabilityStatus(request.getAvailabilityStatus());
-        product.setStockQuantity(request.getStockQuantity());
         Product updated = productRepository.save(product);
 
-        return new ProductResponse(updated);
+        return toProductResponse(updated);
     }
 
     public void deleteProduct(Integer id) {
@@ -83,7 +92,7 @@ public class ProductService {
                 .filter(p -> name == null || p.getProductName().toLowerCase().contains(name.toLowerCase()))
                 .filter(p -> category == null || p.getProductCategory() == category)
                 .filter(p -> status == null || p.getAvailabilityStatus() == status)
-                .map(ProductResponse::new)
+                .map(this::toProductResponse)
                 .toList();
     }
 
@@ -104,7 +113,17 @@ public class ProductService {
 
         return productRepository.findAll(sort)
                 .stream()
-                .map(ProductResponse::new)
+                .map(this::toProductResponse)
                 .toList();
+    }
+    
+    private ProductResponse toProductResponse(Product product) {
+        ProductResponse response = new ProductResponse(product);
+        
+        // Load primary image if exists
+        imageRepository.findByProduct_IdAndIsPrimaryTrue(product.getId())
+                .ifPresent(image -> response.setImageUrl(image.getImageUrl()));
+        
+        return response;
     }
 }

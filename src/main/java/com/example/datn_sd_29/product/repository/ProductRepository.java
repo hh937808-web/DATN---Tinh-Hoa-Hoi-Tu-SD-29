@@ -22,4 +22,6 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
             ProductCategory category,
             ProductStatus status
     );
+    
+    List<Product> findByAvailabilityStatusNot(ProductStatus status);
 }
