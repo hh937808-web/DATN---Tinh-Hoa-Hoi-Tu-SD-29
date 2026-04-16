@@ -48,4 +48,23 @@ public interface ProductVoucherRepository extends JpaRepository<ProductVoucher, 
            "AND is_active = 1", 
            nativeQuery = true)
     int updateUsedUpProductVouchers();
+    
+    /**
+     * Kiểm tra xem sản phẩm đã có voucher ACTIVE chưa
+     * @param productId ID của sản phẩm
+     * @return true nếu sản phẩm đã có voucher ACTIVE
+     */
+    @Query("SELECT CASE WHEN COUNT(pv) > 0 THEN true ELSE false END " +
+           "FROM ProductVoucher pv " +
+           "WHERE pv.product.id = :productId AND pv.isActive = true")
+    boolean existsActiveVoucherForProduct(@Param("productId") Integer productId);
+    
+    /**
+     * Tìm voucher ACTIVE của sản phẩm (nếu có)
+     * @param productId ID của sản phẩm
+     * @return Optional chứa ProductVoucher nếu tìm thấy
+     */
+    @Query("SELECT pv FROM ProductVoucher pv " +
+           "WHERE pv.product.id = :productId AND pv.isActive = true")
+    Optional<ProductVoucher> findActiveVoucherByProductId(@Param("productId") Integer productId);
 }

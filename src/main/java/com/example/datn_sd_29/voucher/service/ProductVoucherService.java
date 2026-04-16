@@ -40,6 +40,14 @@ public class ProductVoucherService {
                         "Không tìm thấy Product id = " + request.getProductId()
                 ));
 
+        // Check if product already has an ACTIVE voucher
+        if (productVoucherRepository.existsActiveVoucherForProduct(request.getProductId())) {
+            throw new IllegalArgumentException(
+                    "Sản phẩm '" + product.getProductName() + "' đã có voucher đang hoạt động. " +
+                    "Vui lòng vô hiệu hóa voucher cũ trước khi tạo voucher mới."
+            );
+        }
+
         // FIX #10: Validate discount percent must be 1-100%
         if (request.getDiscountPercent() != null) {
             if (request.getDiscountPercent() < 1 || request.getDiscountPercent() > 100) {
