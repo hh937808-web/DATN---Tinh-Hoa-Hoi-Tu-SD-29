@@ -24,7 +24,7 @@ public class ProductVoucherService {
     // GET ALL
     // =====================
     public List<ProductVoucherResponse> getAll() {
-        return productVoucherRepository.findAll()
+        return productVoucherRepository.findAllOrderedByStatusAndCreatedAt()
                 .stream()
                 .map(ProductVoucherResponse::new)
                 .toList();

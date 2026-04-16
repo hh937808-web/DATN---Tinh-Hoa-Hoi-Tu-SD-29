@@ -151,12 +151,47 @@ public class PaymentService {
             itemResponses.add(i);
         }
 
+        // Auto-apply product vouchers
+        autoApplyProductVouchers(items, itemResponses, customer);
+        
+        // Recalculate subtotal and item voucher discount after auto-apply
+        subtotal = BigDecimal.ZERO;
+        BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
+        for (PaymentItemResponse i : itemResponses) {
+            BigDecimal lineTotal = i.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(i.getQuantity()))
+                    .subtract(i.getDiscount());
+            i.setLineTotal(lineTotal);
+            subtotal = subtotal.add(lineTotal);
+            itemVoucherDiscount = itemVoucherDiscount.add(i.getDiscount());
+        }
+
         response.setItems(itemResponses);
         response.setSubtotal(subtotal);
-        response.setItemVoucherDiscount(BigDecimal.ZERO);
+        response.setItemVoucherDiscount(itemVoucherDiscount);
         response.setVatPercent(vatPercent);
         response.setServiceFeePercent(serviceFeePercent);
         response.setPointValue(POINT_VALUE.intValue());
+
+        // Auto-apply invoice voucher (CustomerVoucher) if available
+        BigDecimal subtotalAfterItemVoucher = subtotal.subtract(itemVoucherDiscount);
+        CustomerVoucher autoVoucher = autoApplyInvoiceVoucher(customer, subtotalAfterItemVoucher);
+        if (autoVoucher != null) {
+            response.setAutoAppliedVoucherId(autoVoucher.getId());
+            response.setAutoAppliedVoucherCode(autoVoucher.getPersonalVoucher().getVoucherCode());
+            response.setAutoAppliedVoucherName(autoVoucher.getPersonalVoucher().getVoucherName());
+            response.setAutoAppliedVoucherPercent(autoVoucher.getPersonalVoucher().getDiscountPercent());
+            
+            // Calculate discount
+            Integer percent = autoVoucher.getPersonalVoucher().getDiscountPercent();
+            if (percent != null && percent > 0) {
+                BigDecimal discount = subtotalAfterItemVoucher.multiply(BigDecimal.valueOf(percent))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                response.setAutoAppliedVoucherDiscount(discount);
+            } else {
+                response.setAutoAppliedVoucherDiscount(BigDecimal.ZERO);
+            }
+        }
 
         response.setVouchers(loadAvailableVouchers(customer));
         return response;
@@ -240,12 +275,48 @@ public class PaymentService {
                 itemResponses.add(i);
             }
 
+            // Auto-apply product vouchers
+            autoApplyProductVouchers(items, itemResponses, customer);
+            
+            // Recalculate subtotal and item voucher discount after auto-apply
+            subtotal = BigDecimal.ZERO;
+            BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
+            for (PaymentItemResponse i : itemResponses) {
+                BigDecimal lineTotal = i.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(i.getQuantity()))
+                        .subtract(i.getDiscount());
+                i.setLineTotal(lineTotal);
+                subtotal = subtotal.add(lineTotal);
+                itemVoucherDiscount = itemVoucherDiscount.add(i.getDiscount());
+            }
+
             response.setItems(itemResponses);
             response.setSubtotal(subtotal);
-            response.setItemVoucherDiscount(BigDecimal.ZERO);
+            response.setItemVoucherDiscount(itemVoucherDiscount);
             response.setVatPercent(vatPercent);
             response.setServiceFeePercent(serviceFeePercent);
             response.setPointValue(POINT_VALUE.intValue());
+            
+            // Auto-apply invoice voucher (CustomerVoucher) if available
+            BigDecimal subtotalAfterItemVoucher = subtotal.subtract(itemVoucherDiscount);
+            CustomerVoucher autoVoucher = autoApplyInvoiceVoucher(customer, subtotalAfterItemVoucher);
+            if (autoVoucher != null) {
+                response.setAutoAppliedVoucherId(autoVoucher.getId());
+                response.setAutoAppliedVoucherCode(autoVoucher.getPersonalVoucher().getVoucherCode());
+                response.setAutoAppliedVoucherName(autoVoucher.getPersonalVoucher().getVoucherName());
+                response.setAutoAppliedVoucherPercent(autoVoucher.getPersonalVoucher().getDiscountPercent());
+                
+                // Calculate discount
+                Integer percent = autoVoucher.getPersonalVoucher().getDiscountPercent();
+                if (percent != null && percent > 0) {
+                    BigDecimal discount = subtotalAfterItemVoucher.multiply(BigDecimal.valueOf(percent))
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                    response.setAutoAppliedVoucherDiscount(discount);
+                } else {
+                    response.setAutoAppliedVoucherDiscount(BigDecimal.ZERO);
+                }
+            }
+            
             response.setVouchers(loadAvailableVouchers(customer));
 
             responses.add(response);
@@ -449,11 +520,32 @@ public class PaymentService {
 
         BigDecimal invoiceVoucherDiscount = BigDecimal.ZERO;
         CustomerVoucher customerVoucher = null;
-        if (request.getCustomerVoucherId() != null && customer != null) {
-            customerVoucher = customerVoucherRepository
-                    .findByIdAndCustomerId(request.getCustomerVoucherId(), customer.getId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
-
+        
+        // If user explicitly selected a voucher, use it
+        if (request.getCustomerVoucherId() != null) {
+            // Try to find voucher - either customer-specific or public (customer_id = NULL)
+            if (customer != null) {
+                // Try customer-specific voucher first
+                customerVoucher = customerVoucherRepository
+                        .findByIdAndCustomerId(request.getCustomerVoucherId(), customer.getId())
+                        .orElse(null);
+            }
+            
+            // If not found, try public voucher (customer_id = NULL)
+            if (customerVoucher == null) {
+                customerVoucher = customerVoucherRepository
+                        .findById(request.getCustomerVoucherId())
+                        .filter(cv -> cv.getCustomer() == null) // Only public vouchers
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Voucher not found"));
+            }
+        } else {
+            // Auto-apply best available voucher if user didn't select one
+            BigDecimal subtotalAfterItemVoucher = subtotal.subtract(itemVoucherDiscount);
+            customerVoucher = autoApplyInvoiceVoucher(customer, subtotalAfterItemVoucher);
+        }
+        
+        // Validate and calculate discount if voucher is selected/auto-applied
+        if (customerVoucher != null) {
             if (!VoucherStatus.HOAT_DONG.equals(customerVoucher.getVoucherStatus())
                     || customerVoucher.getRemainingQuantity() == null
                     || customerVoucher.getRemainingQuantity() < 1) {
@@ -463,6 +555,14 @@ public class PaymentService {
             if (customerVoucher.getExpiresAt() != null
                     && customerVoucher.getExpiresAt().isBefore(LocalDate.now())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher expired");
+            }
+
+            // Validate minimum order amount
+            BigDecimal baseAfterItemVoucher = subtotal.subtract(itemVoucherDiscount);
+            BigDecimal minOrderAmount = customerVoucher.getPersonalVoucher().getMinOrderAmount();
+            if (minOrderAmount != null && baseAfterItemVoucher.compareTo(minOrderAmount) < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Minimum order amount not met. Required: " + minOrderAmount + ", Current: " + baseAfterItemVoucher);
             }
 
             Integer percent = customerVoucher.getPersonalVoucher().getDiscountPercent();
@@ -670,6 +770,24 @@ public class PaymentService {
             
             productVoucherRepository.save(pv);
             
+            // Save voucher info to InvoiceItem
+            InvoiceItem matchingItem = items.stream()
+                .filter(item -> item.getProduct() != null && 
+                               item.getProduct().getId().equals(pv.getProduct().getId()))
+                .findFirst()
+                .orElse(null);
+            
+            if (matchingItem != null && pv.getDiscountPercent() != null && pv.getDiscountPercent() > 0) {
+                BigDecimal itemTotal = matchingItem.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(matchingItem.getQuantity()));
+                BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(pv.getDiscountPercent()))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                
+                matchingItem.setAppliedVoucherCode(pv.getVoucherCode());
+                matchingItem.setAppliedVoucherDiscount(discount);
+                invoiceItemRepository.save(matchingItem);
+            }
+            
             InvoiceVoucher invoiceVoucher = new InvoiceVoucher();
             invoiceVoucher.setInvoice(invoice);
             invoiceVoucher.setVoucherScope("PRODUCT");
@@ -794,6 +912,109 @@ public class PaymentService {
         return invoices.get(0);
     }
 
+    /**
+     * Auto-apply product vouchers to invoice items (PUBLIC PROMOTION)
+     * ProductVoucher works as a public promotion - anyone (including walk-in customers) can use it
+     * as long as the voucher is active and within the valid date range.
+     * NO customer requirement - applies to ALL customers.
+     */
+    private void autoApplyProductVouchers(List<InvoiceItem> items, List<PaymentItemResponse> itemResponses, Customer customer) {
+        LocalDate today = LocalDate.now();
+        
+        // Load all active product vouchers (PUBLIC PROMOTION for everyone - no customer requirement)
+        List<ProductVoucher> productVouchers = productVoucherRepository.findByIsActiveTrue();
+        
+        for (int i = 0; i < items.size(); i++) {
+            InvoiceItem item = items.get(i);
+            PaymentItemResponse itemResponse = itemResponses.get(i);
+            
+            // Skip if item already has voucher applied (from previous checkout attempt)
+            if (item.getAppliedVoucherCode() != null) {
+                itemResponse.setVoucherCode(item.getAppliedVoucherCode());
+                itemResponse.setDiscount(item.getAppliedVoucherDiscount() != null ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO);
+                continue;
+            }
+            
+            // Try to find matching product voucher (auto-apply if product has active promotion)
+            if (item.getProduct() != null) {
+                ProductVoucher matchingVoucher = productVouchers.stream()
+                    .filter(pv -> pv.getProduct().getId().equals(item.getProduct().getId()))
+                    .filter(pv -> pv.getRemainingQuantity() != null && pv.getRemainingQuantity() > 0)
+                    .filter(pv -> pv.getValidFrom() == null || !today.isBefore(pv.getValidFrom()))
+                    .filter(pv -> pv.getValidTo() == null || !today.isAfter(pv.getValidTo()))
+                    .findFirst()
+                    .orElse(null);
+                
+                if (matchingVoucher != null && matchingVoucher.getDiscountPercent() != null && matchingVoucher.getDiscountPercent() > 0) {
+                    BigDecimal itemTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(matchingVoucher.getDiscountPercent()))
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                    
+                    itemResponse.setVoucherCode(matchingVoucher.getVoucherCode());
+                    itemResponse.setDiscount(discount);
+                }
+            }
+        }
+    }
+
+    /**
+     * Auto-apply invoice voucher (CustomerVoucher) when conditions are met
+     * Finds the best available voucher that meets minimum order amount requirement
+     * Priority: Highest ACTUAL discount amount (not just percentage)
+     * Example: 30% off 500k (150k) is better than 15% off 1000k (150k) - same discount
+     *          But 30% off 1000k (300k) is better than 15% off 1000k (150k)
+     */
+    private CustomerVoucher autoApplyInvoiceVoucher(Customer customer, BigDecimal subtotalAfterItemVoucher) {
+        LocalDate today = LocalDate.now();
+        List<CustomerVoucher> availableVouchers = new ArrayList<>();
+        
+        // 1. Load customer-specific vouchers if customer exists
+        if (customer != null) {
+            List<CustomerVoucher> customerVouchers = customerVoucherRepository.findByCustomerId(customer.getId());
+            availableVouchers.addAll(customerVouchers);
+        }
+        
+        // 2. Load public vouchers (customer_id = NULL) - available to everyone including walk-ins
+        List<CustomerVoucher> publicVouchers = customerVoucherRepository.findPublicVouchers();
+        availableVouchers.addAll(publicVouchers);
+        
+        // 3. Filter and find best voucher by ACTUAL discount amount
+        CustomerVoucher bestVoucher = availableVouchers.stream()
+            // Must be active
+            .filter(cv -> VoucherStatus.HOAT_DONG.equals(cv.getVoucherStatus()))
+            // Must have remaining uses
+            .filter(cv -> cv.getRemainingQuantity() != null && cv.getRemainingQuantity() > 0)
+            // Must not be expired
+            .filter(cv -> cv.getExpiresAt() == null || !cv.getExpiresAt().isBefore(today))
+            // Must meet minimum order amount requirement
+            .filter(cv -> {
+                BigDecimal minOrderAmount = cv.getPersonalVoucher().getMinOrderAmount();
+                return minOrderAmount == null || subtotalAfterItemVoucher.compareTo(minOrderAmount) >= 0;
+            })
+            // Sort by ACTUAL discount amount (highest first)
+            .max((cv1, cv2) -> {
+                // Calculate actual discount for voucher 1
+                Integer percent1 = cv1.getPersonalVoucher().getDiscountPercent();
+                if (percent1 == null) percent1 = 0;
+                BigDecimal discount1 = subtotalAfterItemVoucher
+                    .multiply(BigDecimal.valueOf(percent1))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                
+                // Calculate actual discount for voucher 2
+                Integer percent2 = cv2.getPersonalVoucher().getDiscountPercent();
+                if (percent2 == null) percent2 = 0;
+                BigDecimal discount2 = subtotalAfterItemVoucher
+                    .multiply(BigDecimal.valueOf(percent2))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                
+                // Compare actual discount amounts
+                return discount1.compareTo(discount2);
+            })
+            .orElse(null);
+        
+        return bestVoucher;
+    }
+
     private List<PaymentVoucherResponse> loadAvailableVouchers(Customer customer) {
         List<PaymentVoucherResponse> result = new ArrayList<>();
         LocalDate today = LocalDate.now();
@@ -845,6 +1066,49 @@ public class PaymentService {
             }
         }
         
+        // 1.5. Load Public Customer Vouchers (customer_id = NULL - applies to all customers including walk-ins)
+        List<CustomerVoucher> publicVouchers = customerVoucherRepository.findPublicVouchers();
+        for (CustomerVoucher cv : publicVouchers) {
+            boolean isExpired = cv.getExpiresAt() != null && cv.getExpiresAt().isBefore(today);
+            String status;
+            boolean isActive;
+            
+            if (cv.getRemainingQuantity() == null || cv.getRemainingQuantity() <= 0) {
+                status = "USED";
+                isActive = false;
+            } else if (VoucherStatus.DA_DUNG.equals(cv.getVoucherStatus())) {
+                status = "USED";
+                isActive = false;
+            } else if (isExpired) {
+                status = "EXPIRED";
+                isActive = false;
+            } else if (VoucherStatus.HOAT_DONG.equals(cv.getVoucherStatus())) {
+                status = "ACTIVE";
+                isActive = true;
+            } else {
+                status = "INACTIVE";
+                isActive = false;
+            }
+            
+            PaymentVoucherResponse dto = new PaymentVoucherResponse();
+            dto.setId(cv.getId());
+            dto.setCode(cv.getPersonalVoucher().getVoucherCode());
+            dto.setName(cv.getPersonalVoucher().getVoucherName());
+            dto.setPercent(cv.getPersonalVoucher().getDiscountPercent());
+            dto.setExpiresAt(cv.getExpiresAt());
+            dto.setRemainingQuantity(cv.getRemainingQuantity());
+            dto.setVoucherStatus(status);
+            dto.setVoucherType("CUSTOMER");
+            dto.setApplicableItemId(null);
+            dto.setApplicableItemName(null);
+            
+            if (isActive) {
+                result.add(0, dto); // Add active vouchers at the beginning
+            } else {
+                result.add(dto); // Add used/expired/inactive vouchers at the end
+            }
+        }
+        
         // 2. Load Product Vouchers (Vouchers for specific products)
         List<ProductVoucher> productVouchers = productVoucherRepository.findByIsActiveTrue();
         for (ProductVoucher pv : productVouchers) {
@@ -887,47 +1151,8 @@ public class PaymentService {
             }
         }
         
-        // 3. Load Combo Vouchers (Vouchers for specific combos)
-        List<ProductComboVoucher> comboVouchers = productComboVoucherRepository.findByIsActiveTrue();
-        for (ProductComboVoucher pcv : comboVouchers) {
-            boolean isExpired = (pcv.getValidTo() != null && pcv.getValidTo().isBefore(today)) ||
-                               (pcv.getValidFrom() != null && pcv.getValidFrom().isAfter(today));
-            boolean hasRemainingUses = pcv.getRemainingQuantity() != null && pcv.getRemainingQuantity() > 0;
-            String status;
-            boolean isActive;
-            
-            if (isExpired) {
-                status = "EXPIRED";
-                isActive = false;
-            } else if (!hasRemainingUses) {
-                status = "USED";
-                isActive = false;
-            } else if (pcv.getIsActive() != null && pcv.getIsActive()) {
-                status = "ACTIVE";
-                isActive = true;
-            } else {
-                status = "INACTIVE";
-                isActive = false;
-            }
-            
-            PaymentVoucherResponse dto = new PaymentVoucherResponse();
-            dto.setId(pcv.getId());
-            dto.setCode(pcv.getVoucherCode());
-            dto.setName(pcv.getVoucherName());
-            dto.setPercent(pcv.getDiscountPercent());
-            dto.setExpiresAt(pcv.getValidTo());
-            dto.setRemainingQuantity(pcv.getRemainingQuantity());
-            dto.setVoucherStatus(status);
-            dto.setVoucherType("COMBO");
-            dto.setApplicableItemId(pcv.getProductCombo().getId());
-            dto.setApplicableItemName(pcv.getProductCombo().getComboName());
-            
-            if (isActive) {
-                result.add(0, dto); // Add active vouchers at the beginning
-            } else {
-                result.add(dto); // Add expired/inactive vouchers at the end
-            }
-        }
+        // NOTE: ProductComboVoucher is NOT included in the voucher selection list
+        // Combo vouchers auto-apply when a combo is in the order (not manually selectable)
         
         return result;
     }

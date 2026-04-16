@@ -20,7 +20,7 @@ public class CustomerVoucherRequest {
     @Max(value = 100, message = "Giảm giá không được vượt quá 100%")
     private Integer discountPercent;
 
-    @NotNull(message = "Customer id is required")
+    // Customer ID is now optional - voucher can apply to all customers
     private Integer customerId;
 
     private LocalDate issuedAt;

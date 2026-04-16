@@ -16,10 +16,20 @@ public interface CustomerVoucherRepository extends JpaRepository<CustomerVoucher
     List<CustomerVoucher> findByCustomerIdAndVoucherStatus(Integer customerId, String voucherStatus);
 
     List<CustomerVoucher> findByCustomerId(Integer customerId);
+    
+    // Sắp xếp: HOAT_DONG trước, sau đó theo ngày tạo mới nhất
+    @Query("SELECT cv FROM CustomerVoucher cv ORDER BY " +
+           "CASE WHEN cv.voucherStatus = 'HOAT_DONG' THEN 0 ELSE 1 END, " +
+           "cv.createdAt DESC")
+    List<CustomerVoucher> findAllOrderedByStatusAndCreatedAt();
 
     // FIX #6: Add pessimistic lock to prevent race condition when multiple users use same voucher
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CustomerVoucher> findByIdAndCustomerId(Integer id, Integer customerId);
+    
+    // Find public vouchers (customer_id = NULL) that apply to all customers
+    @Query("SELECT cv FROM CustomerVoucher cv WHERE cv.customer IS NULL")
+    List<CustomerVoucher> findPublicVouchers();
     
     /**
      * Cập nhật trạng thái voucher hết hạn
@@ -39,7 +49,7 @@ public interface CustomerVoucherRepository extends JpaRepository<CustomerVoucher
      */
     @Modifying
     @Query(value = "UPDATE CustomerVoucher SET voucher_status = 'DA_DUNG' " +
-           "WHERE remaining_uses <= 0 " +
+           "WHERE remaining_quantity <= 0 " +
            "AND voucher_status = 'HOAT_DONG'", 
            nativeQuery = true)
     int updateUsedUpVouchers();

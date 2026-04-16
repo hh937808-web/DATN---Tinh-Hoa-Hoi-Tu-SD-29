@@ -57,4 +57,11 @@ public class InvoiceItem {
     @Size(max = 100)
     @Column(name = "product_version_id", length = 100)
     private String productVersionId;
+
+    @Size(max = 50)
+    @Column(name = "applied_voucher_code", length = 50)
+    private String appliedVoucherCode;
+
+    @Column(name = "applied_voucher_discount", precision = 18, scale = 2)
+    private BigDecimal appliedVoucherDiscount;
 }

@@ -34,6 +34,13 @@ public class PaymentDetailResponse {
     private BigDecimal vatPercent;
     private BigDecimal serviceFeePercent;
     private Integer pointValue;
+    
+    // Auto-applied invoice voucher info
+    private Integer autoAppliedVoucherId;
+    private String autoAppliedVoucherCode;
+    private String autoAppliedVoucherName;
+    private Integer autoAppliedVoucherPercent;
+    private BigDecimal autoAppliedVoucherDiscount;
 
     @Getter
     @Setter

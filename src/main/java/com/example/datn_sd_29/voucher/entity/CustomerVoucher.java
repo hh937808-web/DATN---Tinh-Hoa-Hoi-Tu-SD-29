@@ -25,9 +25,9 @@ public class CustomerVoucher {
     @JoinColumn(name = "personal_voucher_id", nullable = false)
     private PersonalVoucher personalVoucher;
 
-    @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", nullable = false)
+    // Customer is now optional - null means voucher applies to all customers
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
     private Customer customer;
 
     @Column(name = "issued_at")

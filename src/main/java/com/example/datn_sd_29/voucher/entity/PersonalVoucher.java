@@ -10,6 +10,8 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.Nationalized;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 @Entity
@@ -34,5 +36,8 @@ public class PersonalVoucher {
     @Nationalized
     @Column(name = "voucher_type", length = 50)
     private String voucherType;
+
+    @Column(name = "min_order_amount", precision = 18, scale = 2)
+    private BigDecimal minOrderAmount;
 
 }

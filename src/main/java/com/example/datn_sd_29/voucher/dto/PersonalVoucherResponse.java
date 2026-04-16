@@ -2,6 +2,8 @@ package com.example.datn_sd_29.voucher.dto;
 
 import com.example.datn_sd_29.voucher.entity.PersonalVoucher;
 
+import java.math.BigDecimal;
+
 public class PersonalVoucherResponse {
 
     private Integer id;
@@ -9,6 +11,7 @@ public class PersonalVoucherResponse {
     private String voucherName;
     private Integer discountPercent;
     private String voucherType;
+    private BigDecimal minOrderAmount;
 
     public PersonalVoucherResponse(PersonalVoucher voucher) {
         this.id = voucher.getId();
@@ -16,6 +19,7 @@ public class PersonalVoucherResponse {
         this.voucherName = voucher.getVoucherName();
         this.discountPercent = voucher.getDiscountPercent();
         this.voucherType = voucher.getVoucherType();
+        this.minOrderAmount = voucher.getMinOrderAmount();
     }
 
     public Integer getId() {
@@ -36,5 +40,9 @@ public class PersonalVoucherResponse {
 
     public String getVoucherType() {
         return voucherType;
+    }
+
+    public BigDecimal getMinOrderAmount() {
+        return minOrderAmount;
     }
 }

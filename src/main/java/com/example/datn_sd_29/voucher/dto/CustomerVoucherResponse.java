@@ -33,8 +33,14 @@ public class CustomerVoucherResponse {
         this.voucherCode = voucher.getPersonalVoucher().getVoucherCode();
         this.voucherName = voucher.getPersonalVoucher().getVoucherName();
 
-        this.customerId = voucher.getCustomer().getId();
-        this.customerFullName = voucher.getCustomer().getFullName();
+        // Customer is now optional - null means voucher applies to all customers
+        if (voucher.getCustomer() != null) {
+            this.customerId = voucher.getCustomer().getId();
+            this.customerFullName = voucher.getCustomer().getFullName();
+        } else {
+            this.customerId = null;
+            this.customerFullName = null;
+        }
 
         this.issuedAt = voucher.getIssuedAt();
         this.expiresAt = voucher.getExpiresAt();

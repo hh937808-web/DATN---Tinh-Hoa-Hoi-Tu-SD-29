@@ -25,7 +25,7 @@ public class CustomerVoucherService {
     private final VoucherCodeValidator voucherCodeValidator;
 
     public List<CustomerVoucherResponse> getAll() {
-        return customerVoucherRepository.findAll()
+        return customerVoucherRepository.findAllOrderedByStatusAndCreatedAt()
                 .stream()
                 .map(CustomerVoucherResponse::new)
                 .toList();
@@ -82,11 +82,15 @@ public class CustomerVoucherService {
             personalVoucher = personalVoucherRepository.save(personalVoucher);
         }
 
-        Customer customer = customerRepository
-                .findById(request.getCustomerId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException("Customer not found with id: " + request.getCustomerId())
-                );
+        // Customer is now optional - null means voucher applies to all customers
+        Customer customer = null;
+        if (request.getCustomerId() != null) {
+            customer = customerRepository
+                    .findById(request.getCustomerId())
+                    .orElseThrow(() ->
+                            new IllegalArgumentException("Customer not found with id: " + request.getCustomerId())
+                    );
+        }
 
         // FIX #5: Validate expiry date must be in the future
         if (request.getExpiresAt() != null && request.getExpiresAt().isBefore(java.time.LocalDate.now())) {

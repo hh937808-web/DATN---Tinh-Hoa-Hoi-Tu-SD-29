@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.voucher.scheduler;
 
 import com.example.datn_sd_29.voucher.repository.CustomerVoucherRepository;
+import com.example.datn_sd_29.voucher.repository.ProductVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 public class VoucherExpirationScheduler {
 
     private final CustomerVoucherRepository customerVoucherRepository;
+    private final ProductVoucherRepository productVoucherRepository;
 
     /**
      * Chạy mỗi ngày lúc 00:05 để kiểm tra và cập nhật trạng thái voucher hết hạn
@@ -28,15 +30,21 @@ public class VoucherExpirationScheduler {
         
         LocalDate today = LocalDate.now();
         
-        // Tìm tất cả voucher đang hoạt động nhưng đã hết hạn
-        int expiredCount = customerVoucherRepository.updateExpiredVouchers(today);
+        // Cập nhật CustomerVoucher (voucher hóa đơn cá nhân)
+        int expiredCustomerVouchers = customerVoucherRepository.updateExpiredVouchers(today);
+        log.info("Đã cập nhật {} CustomerVoucher hết hạn", expiredCustomerVouchers);
         
-        log.info("Đã cập nhật {} voucher hết hạn", expiredCount);
+        int usedUpCustomerVouchers = customerVoucherRepository.updateUsedUpVouchers();
+        log.info("Đã cập nhật {} CustomerVoucher hết lượt sử dụng", usedUpCustomerVouchers);
         
-        // Tìm tất cả voucher đang hoạt động nhưng đã hết lượt sử dụng
-        int usedUpCount = customerVoucherRepository.updateUsedUpVouchers();
+        // Cập nhật ProductVoucher (voucher sản phẩm)
+        int expiredProductVouchers = productVoucherRepository.updateExpiredProductVouchers(today);
+        log.info("Đã vô hiệu hóa {} ProductVoucher hết hạn", expiredProductVouchers);
         
-        log.info("Đã cập nhật {} voucher hết lượt sử dụng", usedUpCount);
+        int usedUpProductVouchers = productVoucherRepository.updateUsedUpProductVouchers();
+        log.info("Đã vô hiệu hóa {} ProductVoucher hết số lượng", usedUpProductVouchers);
+        
+        log.info("Hoàn thành kiểm tra voucher hết hạn");
     }
     
     /**
@@ -48,13 +56,21 @@ public class VoucherExpirationScheduler {
         log.info("Kiểm tra voucher hết hạn khi khởi động...");
         
         LocalDate today = LocalDate.now();
-        int expiredCount = customerVoucherRepository.updateExpiredVouchers(today);
         
-        log.info("Đã cập nhật {} voucher hết hạn khi khởi động", expiredCount);
+        // Cập nhật CustomerVoucher
+        int expiredCustomerVouchers = customerVoucherRepository.updateExpiredVouchers(today);
+        log.info("Đã cập nhật {} CustomerVoucher hết hạn khi khởi động", expiredCustomerVouchers);
         
-        // Kiểm tra voucher hết lượt sử dụng
-        int usedUpCount = customerVoucherRepository.updateUsedUpVouchers();
+        int usedUpCustomerVouchers = customerVoucherRepository.updateUsedUpVouchers();
+        log.info("Đã cập nhật {} CustomerVoucher hết lượt sử dụng khi khởi động", usedUpCustomerVouchers);
         
-        log.info("Đã cập nhật {} voucher hết lượt sử dụng khi khởi động", usedUpCount);
+        // Cập nhật ProductVoucher
+        int expiredProductVouchers = productVoucherRepository.updateExpiredProductVouchers(today);
+        log.info("Đã vô hiệu hóa {} ProductVoucher hết hạn khi khởi động", expiredProductVouchers);
+        
+        int usedUpProductVouchers = productVoucherRepository.updateUsedUpProductVouchers();
+        log.info("Đã vô hiệu hóa {} ProductVoucher hết số lượng khi khởi động", usedUpProductVouchers);
+        
+        log.info("Hoàn thành kiểm tra voucher hết hạn khi khởi động");
     }
 }
