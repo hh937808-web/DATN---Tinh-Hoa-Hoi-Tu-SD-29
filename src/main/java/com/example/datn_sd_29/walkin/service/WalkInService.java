@@ -160,15 +160,9 @@ public class WalkInService {
         invoice.setCheckedInAt(Instant.now());
         invoice.setGuestCount(request.getGuestCount());
         
-        // Create temporary customer if customer name is provided
+        // For walk-in customers, save name to guestName field (not create Customer entity)
         if (request.getCustomerName() != null && !request.getCustomerName().trim().isEmpty()) {
-            Customer customer = new Customer();
-            customer.setFullName(request.getCustomerName().trim());
-            customer.setCreatedAt(Instant.now());
-            customer.setIsActive(true);
-            customer.setLoyaltyPoints(0);
-            customer = customerRepository.save(customer);
-            invoice.setCustomer(customer);
+            invoice.setGuestName(request.getCustomerName().trim());
         }
         
         invoice = invoiceRepository.save(invoice);

@@ -75,6 +75,7 @@ public class CustomerVoucherService {
             personalVoucher.setVoucherName(request.getVoucherName());
             personalVoucher.setDiscountPercent(request.getDiscountPercent());
             personalVoucher.setVoucherType("Voucher khách hàng");
+            personalVoucher.setMinOrderAmount(request.getMinOrderAmount());
             
             // FIX #19: Check if voucher code already exists (across all voucher types)
             voucherCodeValidator.validateUniqueVoucherCode(request.getVoucherCode());
@@ -90,6 +91,11 @@ public class CustomerVoucherService {
                     .orElseThrow(() ->
                             new IllegalArgumentException("Customer not found with id: " + request.getCustomerId())
                     );
+        }
+
+        // Validate issued date must not be in the past
+        if (request.getIssuedAt() != null && request.getIssuedAt().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Ngày phát hành không được ở quá khứ");
         }
 
         // FIX #5: Validate expiry date must be in the future
@@ -153,6 +159,10 @@ public class CustomerVoucherService {
         if (!VoucherStatus.HOAT_DONG.equals(voucher.getVoucherStatus()) && Boolean.TRUE.equals(request.getIsActive())) {
             // Only allow activation if voucher still has remaining uses
             if (voucher.getRemainingQuantity() != null && voucher.getRemainingQuantity() > 0) {
+                // Also check if voucher has not expired
+                if (voucher.getExpiresAt() != null && voucher.getExpiresAt().isBefore(java.time.LocalDate.now())) {
+                    throw new IllegalArgumentException("Không thể kích hoạt voucher đã hết hạn. Vui lòng cập nhật ngày hết hạn trước.");
+                }
                 voucher.setVoucherStatus(VoucherStatus.HOAT_DONG);
             } else {
                 throw new IllegalArgumentException("Không thể kích hoạt voucher đã hết lượt sử dụng");

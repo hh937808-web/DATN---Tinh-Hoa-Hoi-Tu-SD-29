@@ -96,7 +96,12 @@ public class PaymentService {
         Customer customer = invoice.getCustomer();
         if (customer == null) {
             response.setCustomerType("GUEST");
-            response.setCustomerName("Khách lẻ");
+            // Use guestName if available, otherwise default to "Khách lẻ"
+            if (invoice.getGuestName() != null && !invoice.getGuestName().trim().isEmpty()) {
+                response.setCustomerName(invoice.getGuestName());
+            } else {
+                response.setCustomerName("Khách lẻ");
+            }
             response.setCustomerPhone("");
             response.setLoyaltyPoints(0);
         } else {
@@ -220,7 +225,12 @@ public class PaymentService {
             Customer customer = invoice.getCustomer();
             if (customer == null) {
                 response.setCustomerType("GUEST");
-                response.setCustomerName("Khách lẻ");
+                // Use guestName if available, otherwise default to "Khách lẻ"
+                if (invoice.getGuestName() != null && !invoice.getGuestName().trim().isEmpty()) {
+                    response.setCustomerName(invoice.getGuestName());
+                } else {
+                    response.setCustomerName("Khách lẻ");
+                }
                 response.setCustomerPhone("");
                 response.setLoyaltyPoints(0);
             } else {

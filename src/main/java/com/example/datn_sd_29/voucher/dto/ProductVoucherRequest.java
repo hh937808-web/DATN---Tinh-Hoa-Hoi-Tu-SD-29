@@ -6,20 +6,18 @@ import java.time.LocalDate;
 
 public class ProductVoucherRequest {
 
-    @NotBlank(message = "Mã voucher không được để trống")
+    // NOTE: Validation removed for update compatibility
+    // These fields are validated in create() method but not required for update()
     @Size(max = 8, message = "Mã voucher tối đa 8 ký tự")
     private String voucherCode;
 
-    @NotBlank(message = "Tên voucher không được để trống")
     @Size(max = 50, message = "Tên voucher tối đa 50 ký tự")
     private String voucherName;
 
-    @NotNull(message = "Phần trăm giảm giá không được để trống")
     @Min(value = 1, message = "Giảm giá phải >= 1%")
     @Max(value = 100, message = "Giảm giá không được vượt quá 100%")
     private Integer discountPercent;
 
-    @NotNull(message = "ProductId không được để trống")
     private Integer productId;
 
     @Min(value = 0, message = "Số lượng còn lại phải >= 0")

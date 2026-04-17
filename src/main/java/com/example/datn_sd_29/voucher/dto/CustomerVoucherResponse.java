@@ -13,6 +13,8 @@ public class CustomerVoucherResponse {
     private Integer personalVoucherId;
     private String voucherCode;
     private String voucherName;
+    private Integer discountPercent;
+    private java.math.BigDecimal minOrderAmount;
 
     private Integer customerId;
     private String customerFullName;
@@ -32,6 +34,8 @@ public class CustomerVoucherResponse {
         this.personalVoucherId = voucher.getPersonalVoucher().getId();
         this.voucherCode = voucher.getPersonalVoucher().getVoucherCode();
         this.voucherName = voucher.getPersonalVoucher().getVoucherName();
+        this.discountPercent = voucher.getPersonalVoucher().getDiscountPercent();
+        this.minOrderAmount = voucher.getPersonalVoucher().getMinOrderAmount();
 
         // Customer is now optional - null means voucher applies to all customers
         if (voucher.getCustomer() != null) {
@@ -63,6 +67,14 @@ public class CustomerVoucherResponse {
 
     public String getVoucherName() {
         return voucherName;
+    }
+
+    public Integer getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public java.math.BigDecimal getMinOrderAmount() {
+        return minOrderAmount;
     }
 
     public Integer getCustomerId() {

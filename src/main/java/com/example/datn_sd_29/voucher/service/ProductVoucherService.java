@@ -34,6 +34,20 @@ public class ProductVoucherService {
     // CREATE
     // =====================
     public ProductVoucherResponse create(ProductVoucherRequest request) {
+        
+        // Manual validation for required fields (since we removed @NotNull/@NotBlank for update compatibility)
+        if (request.getVoucherCode() == null || request.getVoucherCode().trim().isEmpty()) {
+            throw new IllegalArgumentException("Mã voucher không được để trống");
+        }
+        if (request.getVoucherName() == null || request.getVoucherName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Tên voucher không được để trống");
+        }
+        if (request.getDiscountPercent() == null) {
+            throw new IllegalArgumentException("Phần trăm giảm giá không được để trống");
+        }
+        if (request.getProductId() == null) {
+            throw new IllegalArgumentException("ProductId không được để trống");
+        }
 
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -128,13 +142,6 @@ public class ProductVoucherService {
                         new IllegalArgumentException("ProductVoucher not found with id: " + id)
                 );
 
-        // FIX #10: Validate discount percent must be 1-100%
-        if (request.getDiscountPercent() != null) {
-            if (request.getDiscountPercent() < 1 || request.getDiscountPercent() > 100) {
-                throw new IllegalArgumentException("Giảm giá phải từ 1% đến 100%");
-            }
-        }
-
         // FIX #7: Validate date range
         if (request.getValidFrom() != null && request.getValidTo() != null) {
             if (request.getValidTo().isBefore(request.getValidFrom())) {
@@ -145,9 +152,9 @@ public class ProductVoucherService {
         // FIX #8: REMOVED - Allow admin to deactivate voucher anytime
         // Admin có quyền vô hiệu hóa voucher bất cứ lúc nào (đồng nhất với CustomerVoucher)
 
-        voucher.setVoucherCode(request.getVoucherCode());
-        voucher.setVoucherName(request.getVoucherName());
-        voucher.setDiscountPercent(request.getDiscountPercent());
+        // IMPORTANT: Do NOT allow updating voucherCode, voucherName, discountPercent, productId
+        // These are core voucher properties that should not change after creation
+        // Only allow updating: remainingQuantity, validFrom, validTo, isActive
         
         // FIX #9: Validate remaining_quantity and auto-update status
         if (request.getRemainingQuantity() != null) {
@@ -170,6 +177,10 @@ public class ProductVoucherService {
         if (!voucher.getIsActive() && Boolean.TRUE.equals(newStatus)) {
             // Only allow activation if voucher still has remaining uses
             if (voucher.getRemainingQuantity() != null && voucher.getRemainingQuantity() > 0) {
+                // Also check if voucher has not expired
+                if (voucher.getValidTo() != null && voucher.getValidTo().isBefore(java.time.LocalDate.now())) {
+                    throw new IllegalArgumentException("Không thể kích hoạt voucher đã hết hạn. Vui lòng cập nhật ngày hết hạn trước.");
+                }
                 voucher.setIsActive(true);
             } else {
                 throw new IllegalArgumentException("Không thể kích hoạt voucher đã hết lượt sử dụng");

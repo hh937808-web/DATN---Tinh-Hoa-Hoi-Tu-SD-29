@@ -20,6 +20,9 @@ public class CustomerVoucherRequest {
     @Max(value = 100, message = "Giảm giá không được vượt quá 100%")
     private Integer discountPercent;
 
+    @Min(value = 0, message = "Số tiền tối thiểu phải >= 0")
+    private java.math.BigDecimal minOrderAmount;
+
     // Customer ID is now optional - voucher can apply to all customers
     private Integer customerId;
 
@@ -62,6 +65,14 @@ public class CustomerVoucherRequest {
 
     public void setDiscountPercent(Integer discountPercent) {
         this.discountPercent = discountPercent;
+    }
+
+    public java.math.BigDecimal getMinOrderAmount() {
+        return minOrderAmount;
+    }
+
+    public void setMinOrderAmount(java.math.BigDecimal minOrderAmount) {
+        this.minOrderAmount = minOrderAmount;
     }
 
     public Integer getCustomerId() {
