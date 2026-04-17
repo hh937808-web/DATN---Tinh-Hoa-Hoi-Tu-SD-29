@@ -160,14 +160,20 @@ public class PaymentService {
         autoApplyProductVouchers(items, itemResponses, customer);
         
         // Recalculate subtotal and item voucher discount after auto-apply
+        // CRITICAL FIX: subtotal must be BEFORE discount (same as checkout method)
         subtotal = BigDecimal.ZERO;
         BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
         for (PaymentItemResponse i : itemResponses) {
-            BigDecimal lineTotal = i.getUnitPrice()
-                    .multiply(BigDecimal.valueOf(i.getQuantity()))
-                    .subtract(i.getDiscount());
+            // Calculate subtotal BEFORE discount
+            BigDecimal lineSubtotal = i.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(i.getQuantity()));
+            subtotal = subtotal.add(lineSubtotal);
+            
+            // Calculate lineTotal AFTER discount (for display only)
+            BigDecimal lineTotal = lineSubtotal.subtract(i.getDiscount());
             i.setLineTotal(lineTotal);
-            subtotal = subtotal.add(lineTotal);
+            
+            // Sum up item voucher discounts
             itemVoucherDiscount = itemVoucherDiscount.add(i.getDiscount());
         }
 
@@ -197,6 +203,23 @@ public class PaymentService {
                 response.setAutoAppliedVoucherDiscount(BigDecimal.ZERO);
             }
         }
+        
+        // Calculate totalPayable (with points = 0 for initial display)
+        // Frontend will recalculate when user changes points
+        BigDecimal baseAfterVoucher = subtotal.subtract(itemVoucherDiscount);
+        if (autoVoucher != null && response.getAutoAppliedVoucherDiscount() != null) {
+            baseAfterVoucher = baseAfterVoucher.subtract(response.getAutoAppliedVoucherDiscount());
+        }
+        baseAfterVoucher = baseAfterVoucher.max(BigDecimal.ZERO);
+        
+        // Calculate tax on baseAfterVoucher (points = 0 initially)
+        BigDecimal taxAmount = baseAfterVoucher.multiply(vatPercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        BigDecimal serviceFeeAmount = baseAfterVoucher.multiply(serviceFeePercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        
+        BigDecimal totalPayable = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
+        response.setTotalPayable(totalPayable);
 
         response.setVouchers(loadAvailableVouchers(customer));
         return response;
@@ -289,14 +312,20 @@ public class PaymentService {
             autoApplyProductVouchers(items, itemResponses, customer);
             
             // Recalculate subtotal and item voucher discount after auto-apply
+            // CRITICAL FIX: subtotal must be BEFORE discount (same as checkout method)
             subtotal = BigDecimal.ZERO;
             BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
             for (PaymentItemResponse i : itemResponses) {
-                BigDecimal lineTotal = i.getUnitPrice()
-                        .multiply(BigDecimal.valueOf(i.getQuantity()))
-                        .subtract(i.getDiscount());
+                // Calculate subtotal BEFORE discount
+                BigDecimal lineSubtotal = i.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(i.getQuantity()));
+                subtotal = subtotal.add(lineSubtotal);
+                
+                // Calculate lineTotal AFTER discount (for display only)
+                BigDecimal lineTotal = lineSubtotal.subtract(i.getDiscount());
                 i.setLineTotal(lineTotal);
-                subtotal = subtotal.add(lineTotal);
+                
+                // Sum up item voucher discounts
                 itemVoucherDiscount = itemVoucherDiscount.add(i.getDiscount());
             }
 
@@ -326,6 +355,22 @@ public class PaymentService {
                     response.setAutoAppliedVoucherDiscount(BigDecimal.ZERO);
                 }
             }
+            
+            // Calculate totalPayable (with points = 0 for initial display)
+            BigDecimal baseAfterVoucher = subtotal.subtract(itemVoucherDiscount);
+            if (autoVoucher != null && response.getAutoAppliedVoucherDiscount() != null) {
+                baseAfterVoucher = baseAfterVoucher.subtract(response.getAutoAppliedVoucherDiscount());
+            }
+            baseAfterVoucher = baseAfterVoucher.max(BigDecimal.ZERO);
+            
+            // Calculate tax on baseAfterVoucher (points = 0 initially)
+            BigDecimal taxAmount = baseAfterVoucher.multiply(vatPercent)
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+            BigDecimal serviceFeeAmount = baseAfterVoucher.multiply(serviceFeePercent)
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+            
+            BigDecimal totalPayable = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
+            response.setTotalPayable(totalPayable);
             
             response.setVouchers(loadAvailableVouchers(customer));
 
@@ -398,10 +443,27 @@ public class PaymentService {
                 .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal itemVoucherDiscount = BigDecimal.ZERO;
         Customer customer = invoice.getCustomer();
         
-        // Process Product/Combo vouchers
+        // CRITICAL FIX: Auto-apply product vouchers BEFORE calculating discount
+        // This ensures discount is saved to database for consistency
+        List<PaymentItemResponse> tempItemResponses = new ArrayList<>();
+        for (InvoiceItem item : items) {
+            PaymentItemResponse temp = new PaymentItemResponse();
+            temp.setId(item.getId());
+            temp.setQuantity(item.getQuantity());
+            temp.setUnitPrice(item.getUnitPrice());
+            tempItemResponses.add(temp);
+        }
+        autoApplyProductVouchers(items, tempItemResponses, customer);
+        
+        // Calculate item voucher discount from items that now have vouchers applied
+        BigDecimal itemVoucherDiscount = items.stream()
+                .map(i -> i.getAppliedVoucherDiscount() != null ? i.getAppliedVoucherDiscount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        // Validate Product/Combo vouchers if explicitly provided in request
+        // (Item vouchers are already auto-applied in getPaymentByTable, we just validate here)
         List<ProductVoucher> appliedProductVouchers = new ArrayList<>();
         List<ProductComboVoucher> appliedComboVouchers = new ArrayList<>();
         
@@ -491,41 +553,6 @@ public class PaymentService {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
                     "Voucher code " + voucherCode + " not found");
             }
-            
-            // Calculate item-level discounts
-            for (ProductVoucher pv : appliedProductVouchers) {
-                // Find first matching item
-                InvoiceItem matchingItem = items.stream()
-                    .filter(item -> item.getProduct() != null && 
-                                   item.getProduct().getId().equals(pv.getProduct().getId()))
-                    .findFirst()
-                    .orElse(null);
-                
-                if (matchingItem != null && pv.getDiscountPercent() != null && pv.getDiscountPercent() > 0) {
-                    BigDecimal itemTotal = matchingItem.getUnitPrice()
-                        .multiply(BigDecimal.valueOf(matchingItem.getQuantity()));
-                    BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(pv.getDiscountPercent()))
-                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-                    itemVoucherDiscount = itemVoucherDiscount.add(discount);
-                }
-            }
-            
-            for (ProductComboVoucher pcv : appliedComboVouchers) {
-                // Find first matching item
-                InvoiceItem matchingItem = items.stream()
-                    .filter(item -> item.getProductCombo() != null && 
-                                   item.getProductCombo().getId().equals(pcv.getProductCombo().getId()))
-                    .findFirst()
-                    .orElse(null);
-                
-                if (matchingItem != null && pcv.getDiscountPercent() != null && pcv.getDiscountPercent() > 0) {
-                    BigDecimal itemTotal = matchingItem.getUnitPrice()
-                        .multiply(BigDecimal.valueOf(matchingItem.getQuantity()));
-                    BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(pcv.getDiscountPercent()))
-                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-                    itemVoucherDiscount = itemVoucherDiscount.add(discount);
-                }
-            }
         }
 
         BigDecimal invoiceVoucherDiscount = BigDecimal.ZERO;
@@ -611,33 +638,38 @@ public class PaymentService {
                 maxPointsUsagePercent.intValue() + "% of invoice) can be used");
         }
 
-        BigDecimal pointsDiscount = POINT_VALUE.multiply(BigDecimal.valueOf(usePoints));
-        if (pointsDiscount.compareTo(baseAfterVoucher) > 0) {
-            pointsDiscount = baseAfterVoucher.max(BigDecimal.ZERO);
-        }
-
-        BigDecimal taxableBase = baseAfterVoucher.subtract(pointsDiscount);
-        if (taxableBase.compareTo(BigDecimal.ZERO) < 0) {
-            taxableBase = BigDecimal.ZERO;
-        }
-
-        // SERVER-SIDE VAT and Service Fee calculation
+        // CRITICAL FIX: Calculate VAT and service fee on baseAfterVoucher (BEFORE points deduction)
+        // Points are a payment method, not a discount, so tax should be calculated before points
         BigDecimal taxAmount = BigDecimal.ZERO;
         if (vatPercent.compareTo(BigDecimal.ZERO) > 0) {
-            taxAmount = taxableBase.multiply(vatPercent)
+            taxAmount = baseAfterVoucher.multiply(vatPercent)
                     .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
         }
 
         BigDecimal serviceFeeAmount = BigDecimal.ZERO;
         if (serviceFeePercent.compareTo(BigDecimal.ZERO) > 0) {
-            serviceFeeAmount = taxableBase.multiply(serviceFeePercent)
+            serviceFeeAmount = baseAfterVoucher.multiply(serviceFeePercent)
                     .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        }
+
+        // Calculate totalPayable BEFORE points deduction
+        BigDecimal totalPayableBeforePoints = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
+
+        // Now apply points discount (points reduce the amount customer needs to pay)
+        BigDecimal pointsDiscount = POINT_VALUE.multiply(BigDecimal.valueOf(usePoints));
+        if (pointsDiscount.compareTo(totalPayableBeforePoints) > 0) {
+            pointsDiscount = totalPayableBeforePoints.max(BigDecimal.ZERO);
+        }
+
+        // Final amount customer needs to pay (after points)
+        BigDecimal totalPayable = totalPayableBeforePoints.subtract(pointsDiscount);
+        if (totalPayable.compareTo(BigDecimal.ZERO) < 0) {
+            totalPayable = BigDecimal.ZERO;
         }
 
         BigDecimal totalDiscount = itemVoucherDiscount
                 .add(invoiceVoucherDiscount)
                 .add(pointsDiscount);
-        BigDecimal totalPayable = taxableBase.add(taxAmount).add(serviceFeeAmount);
 
         List<PaymentCheckoutRequest.PaymentLine> paymentLines = request.getPayments();
         BigDecimal cashReceived = BigDecimal.ZERO;
@@ -658,10 +690,8 @@ public class PaymentService {
                 }
             }
             if (totalPaid.compareTo(totalPayable) < 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Total paid is not enough");
-            }
-            if (totalPaid.compareTo(totalPayable) > 0 && cashReceived.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Overpay requires cash method");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Total paid is not enough. Required: " + totalPayable + ", Paid: " + totalPaid);
             }
             if (paymentLines.size() == 1) {
                 finalMethod = paymentLines.get(0).getMethod();
@@ -927,6 +957,9 @@ public class PaymentService {
      * ProductVoucher works as a public promotion - anyone (including walk-in customers) can use it
      * as long as the voucher is active and within the valid date range.
      * NO customer requirement - applies to ALL customers.
+     * 
+     * CRITICAL: This method now SAVES the discount to database to ensure consistency between
+     * getPaymentByTable and checkout calculations.
      */
     private void autoApplyProductVouchers(List<InvoiceItem> items, List<PaymentItemResponse> itemResponses, Customer customer) {
         LocalDate today = LocalDate.now();
@@ -960,6 +993,12 @@ public class PaymentService {
                     BigDecimal discount = itemTotal.multiply(BigDecimal.valueOf(matchingVoucher.getDiscountPercent()))
                         .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
                     
+                    // CRITICAL FIX: Save discount to database to ensure consistency
+                    item.setAppliedVoucherCode(matchingVoucher.getVoucherCode());
+                    item.setAppliedVoucherDiscount(discount);
+                    invoiceItemRepository.save(item);
+                    
+                    // Also set in response for display
                     itemResponse.setVoucherCode(matchingVoucher.getVoucherCode());
                     itemResponse.setDiscount(discount);
                 }

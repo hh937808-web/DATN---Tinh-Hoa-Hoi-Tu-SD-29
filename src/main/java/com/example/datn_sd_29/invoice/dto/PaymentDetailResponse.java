@@ -41,6 +41,9 @@ public class PaymentDetailResponse {
     private String autoAppliedVoucherName;
     private Integer autoAppliedVoucherPercent;
     private BigDecimal autoAppliedVoucherDiscount;
+    
+    // Pre-calculated totalPayable from backend (to ensure frontend and backend use same value)
+    private BigDecimal totalPayable;
 
     @Getter
     @Setter
