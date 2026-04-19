@@ -113,6 +113,35 @@ public class PdfExportService {
             
             document.add(pmTable);
             
+            // Invoice channels section
+            Paragraph icHeader = new Paragraph("LOẠI HÓA ĐƠN")
+                .setFont(boldFont)
+                .setFontSize(14)
+                .setMarginBottom(10);
+            document.add(icHeader);
+            
+            Table icTable = new Table(UnitValue.createPercentArray(new float[]{2, 1, 2, 1}))
+                .setWidth(UnitValue.createPercentValue(100))
+                .setMarginBottom(20);
+            
+            // Header row
+            addHeaderCell(icTable, "Loại", boldFont);
+            addHeaderCell(icTable, "Số đơn", boldFont);
+            addHeaderCell(icTable, "Doanh thu", boldFont);
+            addHeaderCell(icTable, "Tỷ lệ %", boldFont);
+            
+            // Data rows
+            if (report.getInvoiceChannels() != null) {
+                for (RevenueReportResponse.InvoiceChannelBreakdown ic : report.getInvoiceChannels()) {
+                    icTable.addCell(new Cell().add(new Paragraph(getInvoiceChannelName(ic.getChannel())).setFont(font)));
+                    icTable.addCell(new Cell().add(new Paragraph(String.valueOf(ic.getCount())).setFont(font)));
+                    icTable.addCell(new Cell().add(new Paragraph(formatMoney(ic.getAmount())).setFont(font)));
+                    icTable.addCell(new Cell().add(new Paragraph(String.format("%.1f%%", ic.getPercentage())).setFont(font)));
+                }
+            }
+            
+            document.add(icTable);
+            
             // Daily revenue section
             Paragraph dailyHeader = new Paragraph("DOANH THU THEO NGÀY")
                 .setFont(boldFont)
@@ -270,6 +299,14 @@ public class PdfExportService {
             case "CARD": return "Thẻ";
             case "POINTS": return "Điểm tích lũy";
             default: return method;
+        }
+    }
+
+    private String getInvoiceChannelName(String channel) {
+        switch (channel) {
+            case "ONLINE": return "Online";
+            case "OFFLINE": return "Tại quầy";
+            default: return channel;
         }
     }
 

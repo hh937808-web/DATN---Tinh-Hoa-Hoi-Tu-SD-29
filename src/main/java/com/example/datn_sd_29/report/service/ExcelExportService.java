@@ -106,6 +106,42 @@ public class ExcelExportService {
             
             rowNum++; // Empty row
             
+            // Invoice channels section
+            Row icHeaderRow = sheet.createRow(rowNum++);
+            Cell icHeaderCell = icHeaderRow.createCell(0);
+            icHeaderCell.setCellValue("LOẠI HÓA ĐƠN");
+            icHeaderCell.setCellStyle(headerStyle);
+            sheet.addMergedRegion(new CellRangeAddress(rowNum - 1, rowNum - 1, 0, 3));
+            
+            Row icColumnRow = sheet.createRow(rowNum++);
+            icColumnRow.createCell(0).setCellValue("Loại");
+            icColumnRow.createCell(1).setCellValue("Số đơn");
+            icColumnRow.createCell(2).setCellValue("Doanh thu");
+            icColumnRow.createCell(3).setCellValue("Tỷ lệ %");
+            for (int i = 0; i < 4; i++) {
+                icColumnRow.getCell(i).setCellStyle(headerStyle);
+            }
+            
+            if (report.getInvoiceChannels() != null) {
+                for (RevenueReportResponse.InvoiceChannelBreakdown ic : report.getInvoiceChannels()) {
+                    Row icRow = sheet.createRow(rowNum++);
+                    Cell channelCell = icRow.createCell(0);
+                    channelCell.setCellValue(getInvoiceChannelName(ic.getChannel()));
+                    channelCell.setCellStyle(dataStyle);
+                    Cell countCell = icRow.createCell(1);
+                    countCell.setCellValue(ic.getCount());
+                    countCell.setCellStyle(dataStyle);
+                    Cell amountCell = icRow.createCell(2);
+                    amountCell.setCellValue(ic.getAmount().doubleValue());
+                    amountCell.setCellStyle(moneyStyle);
+                    Cell percentCell = icRow.createCell(3);
+                    percentCell.setCellValue(String.format("%.1f%%", ic.getPercentage()));
+                    percentCell.setCellStyle(dataStyle);
+                }
+            }
+            
+            rowNum++; // Empty row
+            
             // Daily revenue section
             Row dailyHeaderRow = sheet.createRow(rowNum++);
             Cell dailyHeaderCell = dailyHeaderRow.createCell(0);
@@ -358,6 +394,14 @@ public class ExcelExportService {
             case "CARD": return "Thẻ";
             case "POINTS": return "Điểm tích lũy";
             default: return method;
+        }
+    }
+
+    private String getInvoiceChannelName(String channel) {
+        switch (channel) {
+            case "ONLINE": return "Online";
+            case "OFFLINE": return "Tại quầy";
+            default: return channel;
         }
     }
 

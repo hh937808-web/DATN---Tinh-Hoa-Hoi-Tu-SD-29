@@ -14,6 +14,7 @@ public class PaymentDetailResponse {
     private Integer invoiceId;
     private String invoiceCode;
     private String invoiceStatus;
+    private String invoiceChannel; // WALK_IN or ONLINE
 
     private String customerType; // MEMBER | GUEST
     private String customerName;

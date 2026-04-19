@@ -34,6 +34,9 @@ public class RevenueReportResponse {
     // Category breakdown
     private List<CategoryBreakdown> categoryBreakdown;
     
+    // Invoice channel breakdown
+    private List<InvoiceChannelBreakdown> invoiceChannels;
+    
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -69,6 +72,16 @@ public class RevenueReportResponse {
         private String category;
         private BigDecimal revenue;
         private Integer itemCount;
+        private Double percentage;
+    }
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class InvoiceChannelBreakdown {
+        private String channel;
+        private BigDecimal amount;
+        private Integer count;
         private Double percentage;
     }
 }

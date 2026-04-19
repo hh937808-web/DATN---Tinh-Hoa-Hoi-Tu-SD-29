@@ -25,4 +25,5 @@ public class RecentInvoiceResponse {
     private String customerName;
     private String customerEmail;
     private String customerPhone;
+    private String invoiceChannel; // WALK_IN or ONLINE
 }

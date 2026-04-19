@@ -216,6 +216,32 @@ public class ReportService {
             .sorted((a, b) -> b.getRevenue().compareTo(a.getRevenue()))
             .collect(Collectors.toList());
         
+        // Calculate invoice channel breakdown
+        Map<String, InvoiceChannelData> channelMap = new HashMap<>();
+        for (Invoice invoice : paidInvoices) {
+            String channel = invoice.getInvoiceChannel() != null ? invoice.getInvoiceChannel() : "UNKNOWN";
+            InvoiceChannelData data = channelMap.getOrDefault(channel, new InvoiceChannelData());
+            data.amount = data.amount.add(invoice.getFinalAmount());
+            data.count++;
+            channelMap.put(channel, data);
+        }
+        
+        List<RevenueReportResponse.InvoiceChannelBreakdown> invoiceChannels = channelMap.entrySet().stream()
+            .map(entry -> {
+                double percentage = totalRevenue.compareTo(BigDecimal.ZERO) > 0
+                    ? entry.getValue().amount.multiply(BigDecimal.valueOf(100))
+                        .divide(totalRevenue, 2, RoundingMode.HALF_UP).doubleValue()
+                    : 0.0;
+                return new RevenueReportResponse.InvoiceChannelBreakdown(
+                    entry.getKey(),
+                    entry.getValue().amount,
+                    entry.getValue().count,
+                    percentage
+                );
+            })
+            .sorted((a, b) -> Integer.compare(b.getCount(), a.getCount()))
+            .collect(Collectors.toList());
+        
         RevenueReportResponse response = new RevenueReportResponse(
             startDate,
             endDate,
@@ -231,7 +257,8 @@ public class ReportService {
             previousPeriodInvoices,
             invoiceGrowthPercentage,
             hourlyRevenues,
-            categoryBreakdown
+            categoryBreakdown,
+            invoiceChannels
         );
         
         return response;
@@ -359,6 +386,11 @@ public class ReportService {
     private static class CategoryData {
         BigDecimal revenue = BigDecimal.ZERO;
         int itemCount = 0;
+    }
+    
+    private static class InvoiceChannelData {
+        BigDecimal amount = BigDecimal.ZERO;
+        int count = 0;
     }
 
     private static class ProductData {

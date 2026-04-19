@@ -271,6 +271,7 @@ public class DashboardService {
                 response.setFinalAmount(invoice.getFinalAmount() != null ? invoice.getFinalAmount() : BigDecimal.ZERO);
                 response.setStatus(invoice.getInvoiceStatus());
                 response.setPaymentMethod(invoice.getPaymentMethod());
+                response.setInvoiceChannel(invoice.getInvoiceChannel());
                 
                 // Set customer info
                 if (invoice.getCustomer() != null) {
@@ -594,6 +595,7 @@ public class DashboardService {
             LocalDate endDate,
             String search,
             String paymentMethod,
+            String invoiceChannel,
             String sortBy,
             String sortDirection
     ) {
@@ -632,6 +634,13 @@ public class DashboardService {
         if (paymentMethod != null && !paymentMethod.isEmpty() && !"ALL".equals(paymentMethod)) {
             allInvoices = allInvoices.stream()
                 .filter(i -> paymentMethod.equals(i.getPaymentMethod()))
+                .collect(Collectors.toList());
+        }
+        
+        // Filter by invoice channel
+        if (invoiceChannel != null && !invoiceChannel.isEmpty() && !"ALL".equals(invoiceChannel)) {
+            allInvoices = allInvoices.stream()
+                .filter(i -> invoiceChannel.equals(i.getInvoiceChannel()))
                 .collect(Collectors.toList());
         }
         
@@ -731,6 +740,7 @@ public class DashboardService {
                 response.setFinalAmount(invoice.getFinalAmount() != null ? invoice.getFinalAmount() : BigDecimal.ZERO);
                 response.setStatus(invoice.getInvoiceStatus());
                 response.setPaymentMethod(invoice.getPaymentMethod());
+                response.setInvoiceChannel(invoice.getInvoiceChannel());
                 
                 // Set customer info
                 if (invoice.getCustomer() != null) {
@@ -766,6 +776,7 @@ public class DashboardService {
         response.setInvoiceId(invoice.getId());
         response.setInvoiceCode(invoice.getInvoiceCode());
         response.setInvoiceStatus(invoice.getInvoiceStatus());
+        response.setInvoiceChannel(invoice.getInvoiceChannel());
         response.setGuestCount(invoice.getGuestCount());
         response.setCheckedInAt(invoice.getCheckedInAt());
         response.setReservedAt(invoice.getReservedAt());

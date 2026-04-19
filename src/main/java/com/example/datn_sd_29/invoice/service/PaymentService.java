@@ -89,6 +89,7 @@ public class PaymentService {
         response.setInvoiceId(invoice.getId());
         response.setInvoiceCode(invoice.getInvoiceCode());
         response.setInvoiceStatus(invoice.getInvoiceStatus());
+        response.setInvoiceChannel(invoice.getInvoiceChannel());
         response.setReservedAt(invoice.getReservedAt());
         response.setCheckedInAt(invoice.getCheckedInAt());
         response.setGuestCount(invoice.getGuestCount());
@@ -241,6 +242,7 @@ public class PaymentService {
             response.setInvoiceId(invoice.getId());
             response.setInvoiceCode(invoice.getInvoiceCode());
             response.setInvoiceStatus(invoice.getInvoiceStatus());
+            response.setInvoiceChannel(invoice.getInvoiceChannel());
             response.setReservedAt(invoice.getReservedAt());
             response.setCheckedInAt(invoice.getCheckedInAt());
             response.setGuestCount(invoice.getGuestCount());

@@ -149,12 +149,13 @@ public class DashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String paymentMethod,
+            @RequestParam(required = false) String invoiceChannel,
             @RequestParam(defaultValue = "time") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDirection
     ) {
         try {
             InvoicePageResponse response = dashboardService.getAllInvoices(
-                page, size, status, startDate, endDate, search, paymentMethod, sortBy, sortDirection
+                page, size, status, startDate, endDate, search, paymentMethod, invoiceChannel, sortBy, sortDirection
             );
             return ResponseEntity.ok(ApiResponse.success("Lấy danh sách hóa đơn thành công", response));
         } catch (Exception e) {
