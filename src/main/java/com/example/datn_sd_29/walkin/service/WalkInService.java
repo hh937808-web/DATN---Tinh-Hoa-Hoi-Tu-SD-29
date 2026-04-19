@@ -76,8 +76,9 @@ public class WalkInService {
         Employee employee;
         if (securityEnabled) {
             // Production mode: lấy employee từ JWT token
-            String email = auth.getPrincipal().toString();
-            employee = employeeRepository.findByEmailIgnoreCase(email)
+            // JWT subject cho employee là USERNAME (không phải email)
+            String username = auth.getPrincipal().toString();
+            employee = employeeRepository.findByUsernameIgnoreCase(username)
                     .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
         } else {
             // Development mode: lấy employee từ X-Employee-Username header

@@ -22,6 +22,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -100,26 +103,39 @@ public class ReservationService {
             throw new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản!");
         }
 
-        // Get customer from JWT token if authenticated, otherwise use test account (dev mode only)
+        // Get customer based on security mode
         String email;
         Customer customer;
         
         if (isAuthenticated) {
             // User is logged in: use email from JWT token (works in both prod and dev mode)
             email = auth.getPrincipal().toString();
+            log.info("Authenticated user email from JWT: {}", email);
             customer = customerRepository.findByEmailIgnoreCase(email)
                     .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập tài khoản!"));
         } else {
-            // No authentication: only allowed in development mode, use test account
-            email = "test@example.com";
-            customer = customerRepository.findByEmailIgnoreCase(email)
-                    .orElseGet(() -> {
-                        Customer newCustomer = new Customer();
-                        newCustomer.setEmail(email);
-                        newCustomer.setFullName(request.getFullName());
-                        newCustomer.setPhoneNumber(request.getPhoneNumber());
-                        return customerRepository.save(newCustomer);
-                    });
+            // Development mode: lấy customer email từ X-Customer-Email header
+            try {
+                ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attributes != null) {
+                    HttpServletRequest httpRequest = attributes.getRequest();
+                    email = httpRequest.getHeader("X-Customer-Email");
+                    
+                    if (email != null && !email.trim().isEmpty()) {
+                        customer = customerRepository.findByEmailIgnoreCase(email.trim())
+                                .orElseThrow(() -> new IllegalArgumentException("Customer not found with email: " + email));
+                        log.info("Development mode: Using customer email from header: {}", email);
+                    } else {
+                        throw new IllegalArgumentException("X-Customer-Email header is required when security is disabled");
+                    }
+                } else {
+                    throw new IllegalArgumentException("Cannot get request context");
+                }
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Failed to get customer from header: " + e.getMessage());
+            }
         }
 
 
