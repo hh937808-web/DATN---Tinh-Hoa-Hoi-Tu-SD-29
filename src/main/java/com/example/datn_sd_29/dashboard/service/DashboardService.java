@@ -4,13 +4,16 @@ import com.example.datn_sd_29.dashboard.dto.DashboardStatsResponse;
 import com.example.datn_sd_29.dashboard.dto.RecentInvoiceResponse;
 import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.dashboard.dto.InvoicePageResponse;
+import com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse;
 import com.example.datn_sd_29.invoice.entity.Invoice;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
 import com.example.datn_sd_29.invoice.entity.InvoiceItemStatus;
 import com.example.datn_sd_29.invoice.entity.InvoiceDiningTable;
+import com.example.datn_sd_29.invoice.entity.InvoiceVoucher;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceItemRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
+import com.example.datn_sd_29.invoice.repository.InvoiceVoucherRepository;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +33,7 @@ public class DashboardService {
     private final InvoiceRepository invoiceRepository;
     private final InvoiceItemRepository invoiceItemRepository;
     private final InvoiceDiningTableRepository invoiceDiningTableRepository;
+    private final InvoiceVoucherRepository invoiceVoucherRepository;
     private final CustomerRepository customerRepository;
     private final DiningTableRepository diningTableRepository;
 
@@ -793,8 +797,15 @@ public class DashboardService {
         }
         
         // Staff info
-        if (invoice.getEmployee() != null) {
+        if (invoice.getServingStaff() != null) {
+            response.setStaffName(invoice.getServingStaff().getFullName());
+        } else if (invoice.getEmployee() != null) {
             response.setStaffName(invoice.getEmployee().getFullName());
+        } else {
+            response.setStaffName("Chưa phân công");
+        }
+        if (invoice.getEmployee() != null) {
+            response.setReceptionistName(invoice.getEmployee().getFullName());
         }
         
         // Tables
@@ -836,15 +847,96 @@ public class DashboardService {
                     
                     itemResponse.setQuantity(item.getQuantity());
                     itemResponse.setUnitPrice(item.getUnitPrice());
-                    itemResponse.setDiscount(BigDecimal.ZERO);
-                    itemResponse.setLineTotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+                    BigDecimal itemDiscount = item.getAppliedVoucherDiscount() != null ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO;
+                    itemResponse.setDiscount(itemDiscount);
+                    itemResponse.setVoucherCode(item.getAppliedVoucherCode());
+                    // Calculate discount percent from saved amounts
+                    if (itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal itemTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                        if (itemTotal.compareTo(BigDecimal.ZERO) > 0) {
+                            int pct = itemDiscount.multiply(BigDecimal.valueOf(100))
+                                .divide(itemTotal, 0, RoundingMode.HALF_UP).intValue();
+                            itemResponse.setDiscountPercent(pct);
+                        }
+                    }
+                    itemResponse.setLineTotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())).subtract(itemDiscount));
                     return itemResponse;
                 })
                 .collect(Collectors.toList());
         response.setItems(itemResponses);
-        
-        // Vouchers (empty for now)
-        response.setVouchers(new ArrayList<>());
+
+        // Calculate itemVoucherDiscount from saved item discounts
+        BigDecimal itemVoucherDiscount = items.stream()
+            .map(item -> item.getAppliedVoucherDiscount() != null ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        response.setItemVoucherDiscount(itemVoucherDiscount);
+
+        // Set totalPayable from saved final amount
+        if (invoice.getFinalAmount() != null) {
+            response.setTotalPayable(invoice.getFinalAmount());
+        }
+
+        // Vouchers
+        BigDecimal subtotalForCalc = invoice.getSubtotalAmount() != null ? invoice.getSubtotalAmount() : BigDecimal.ZERO;
+        BigDecimal baseAfterItemVoucher = subtotalForCalc.subtract(itemVoucherDiscount);
+
+        List<InvoiceVoucher> invoiceVouchers = invoiceVoucherRepository.findByInvoiceId(invoiceId);
+        List<com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse> voucherResponses = invoiceVouchers.stream()
+            .map(iv -> {
+                com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse v =
+                    new com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse();
+                if (iv.getCustomerVoucher() != null && iv.getCustomerVoucher().getPersonalVoucher() != null) {
+                    var pv = iv.getCustomerVoucher().getPersonalVoucher();
+                    v.setCode(pv.getVoucherCode());
+                    v.setName(pv.getVoucherName());
+                    v.setPercent(pv.getDiscountPercent());
+                    v.setVoucherType("CUSTOMER");
+                    // Calculate actual discount amount: percent% of subtotal after item vouchers
+                    if (pv.getDiscountPercent() != null && pv.getDiscountPercent() > 0) {
+                        BigDecimal amt = baseAfterItemVoucher
+                            .multiply(BigDecimal.valueOf(pv.getDiscountPercent()))
+                            .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+                        v.setDiscountAmount(amt);
+                    }
+                } else if (iv.getProductVoucher() != null) {
+                    var pv = iv.getProductVoucher();
+                    v.setCode(pv.getVoucherCode());
+                    v.setName(pv.getVoucherName());
+                    v.setPercent(pv.getDiscountPercent());
+                    v.setVoucherType("PRODUCT");
+                    if (pv.getProduct() != null) {
+                        v.setApplicableItemId(pv.getProduct().getId());
+                        v.setApplicableItemName(pv.getProduct().getProductName());
+                        // Find actual discount from matching item
+                        items.stream()
+                            .filter(item -> item.getProduct() != null && item.getProduct().getId().equals(pv.getProduct().getId()))
+                            .findFirst()
+                            .ifPresent(item -> v.setDiscountAmount(
+                                item.getAppliedVoucherDiscount() != null ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO
+                            ));
+                    }
+                } else if (iv.getProductComboVoucher() != null) {
+                    var cv = iv.getProductComboVoucher();
+                    v.setCode(cv.getVoucherCode());
+                    v.setName(cv.getVoucherName());
+                    v.setPercent(cv.getDiscountPercent());
+                    v.setVoucherType("COMBO");
+                    if (cv.getProductCombo() != null) {
+                        v.setApplicableItemId(cv.getProductCombo().getId());
+                        v.setApplicableItemName(cv.getProductCombo().getComboName());
+                        // Find actual discount from matching item
+                        items.stream()
+                            .filter(item -> item.getProductCombo() != null && item.getProductCombo().getId().equals(cv.getProductCombo().getId()))
+                            .findFirst()
+                            .ifPresent(item -> v.setDiscountAmount(
+                                item.getAppliedVoucherDiscount() != null ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO
+                            ));
+                    }
+                }
+                return v;
+            })
+            .collect(Collectors.toList());
+        response.setVouchers(voucherResponses);
         
         return response;
     }

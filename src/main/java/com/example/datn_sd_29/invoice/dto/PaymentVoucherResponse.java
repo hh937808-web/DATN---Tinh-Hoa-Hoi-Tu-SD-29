@@ -12,6 +12,7 @@ public class PaymentVoucherResponse {
     private String code;
     private String name;
     private Integer percent;
+    private java.math.BigDecimal discountAmount; // actual discount amount in VND
     private LocalDate expiresAt;
     private Integer remainingQuantity;
     private String voucherStatus;

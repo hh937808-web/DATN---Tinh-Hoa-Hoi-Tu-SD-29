@@ -24,7 +24,8 @@ public class PaymentDetailResponse {
     private Instant checkedInAt;
 
     private Integer guestCount;
-    private String staffName;
+    private String staffName;       // NV phục vụ (servingStaff)
+    private String receptionistName; // Lễ tân (employee)
     private List<TableSummary> tables;
 
     private List<PaymentItemResponse> items;

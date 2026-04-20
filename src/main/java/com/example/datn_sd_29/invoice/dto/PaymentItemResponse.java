@@ -14,6 +14,7 @@ public class PaymentItemResponse {
     private Integer quantity;
     private BigDecimal unitPrice;
     private BigDecimal discount;
+    private Integer discountPercent; // Percentage of discount applied to this item
     private BigDecimal lineTotal;
     private String voucherCode; // Voucher code applied to this item
     private Integer productId; // For matching with vouchers

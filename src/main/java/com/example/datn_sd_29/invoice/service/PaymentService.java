@@ -22,6 +22,8 @@ import com.example.datn_sd_29.invoice.repository.InvoicePaymentRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceVoucherRepository;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
+import com.example.datn_sd_29.employee.entity.Employee;
+import com.example.datn_sd_29.employee.repository.EmployeeRepository;
 import com.example.datn_sd_29.voucher.entity.CustomerVoucher;
 import com.example.datn_sd_29.voucher.entity.ProductVoucher;
 import com.example.datn_sd_29.voucher.entity.ProductComboVoucher;
@@ -32,9 +34,14 @@ import com.example.datn_sd_29.voucher.repository.ProductComboVoucherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -59,13 +66,17 @@ public class PaymentService {
     private final CustomerVoucherRepository customerVoucherRepository;
     private final InvoiceVoucherRepository invoiceVoucherRepository;
     private final CustomerRepository customerRepository;
+    private final EmployeeRepository employeeRepository;
     private final InvoicePaymentRepository invoicePaymentRepository;
     private final ProductVoucherRepository productVoucherRepository;
     private final ProductComboVoucherRepository productComboVoucherRepository;
     private final DiningTableRepository diningTableRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
     private final InvoiceBroadcastService invoiceBroadcastService;
-    
+
+    @Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
+
     @Value("${payment.vat.percent:10}")
     private BigDecimal vatPercent;
     
@@ -112,7 +123,9 @@ public class PaymentService {
             response.setLoyaltyPoints(customer.getLoyaltyPoints() == null ? 0 : customer.getLoyaltyPoints());
         }
 
-        if (invoice.getEmployee() != null) {
+        if (invoice.getServingStaff() != null) {
+            response.setStaffName(invoice.getServingStaff().getFullName());
+        } else if (invoice.getEmployee() != null) {
             response.setStaffName(invoice.getEmployee().getFullName());
         } else {
             response.setStaffName("Chưa phân công");
@@ -265,7 +278,9 @@ public class PaymentService {
                 response.setLoyaltyPoints(customer.getLoyaltyPoints() == null ? 0 : customer.getLoyaltyPoints());
             }
 
-            if (invoice.getEmployee() != null) {
+            if (invoice.getServingStaff() != null) {
+                response.setStaffName(invoice.getServingStaff().getFullName());
+            } else if (invoice.getEmployee() != null) {
                 response.setStaffName(invoice.getEmployee().getFullName());
             } else {
                 response.setStaffName("Chưa phân công");
@@ -717,6 +732,12 @@ public class PaymentService {
             }
         }
 
+        // Update employee to current logged-in receptionist (lễ tân who processes payment)
+        Employee currentEmployee = getCurrentEmployee();
+        if (currentEmployee != null) {
+            invoice.setEmployee(currentEmployee);
+        }
+
         invoice.setSubtotalAmount(subtotal);
         invoice.setDiscountAmount(totalDiscount);
         // Keep manual discount fields as NULL (removed from business logic but kept for audit)
@@ -1064,6 +1085,33 @@ public class PaymentService {
             .orElse(null);
         
         return bestVoucher;
+    }
+
+    private Employee getCurrentEmployee() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (!securityEnabled) {
+            try {
+                ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attributes != null) {
+                    HttpServletRequest request = attributes.getRequest();
+                    String username = request.getHeader("X-Employee-Username");
+                    if (username != null && !username.trim().isEmpty()) {
+                        return employeeRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
+                    }
+                }
+            } catch (Exception e) {
+                // ignore
+            }
+            return null;
+        }
+
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+
+        String username = auth.getName();
+        return employeeRepository.findByUsernameIgnoreCase(username).orElse(null);
     }
 
     private List<PaymentVoucherResponse> loadAvailableVouchers(Customer customer) {
