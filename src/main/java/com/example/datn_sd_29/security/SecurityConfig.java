@@ -17,6 +17,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = false)
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
@@ -121,6 +122,8 @@ public class SecurityConfig {
                         // ADMIN + RECEPTION - Dashboard & Reports
                         // ========================================
                         .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "RECEPTION")
+                        .requestMatchers("/api/reports/**").hasAnyRole("ADMIN", "RECEPTION")
+                        .requestMatchers("/api/query-builder/**").hasAnyRole("ADMIN", "RECEPTION")
                         
                         // ========================================
                         // RECEPTION + ADMIN - Reception Specific Endpoints

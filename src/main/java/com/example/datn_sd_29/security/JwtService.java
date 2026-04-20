@@ -94,4 +94,9 @@ public class JwtService {
     public Integer extractCustomerId(String token) {
         return parseClaims(token).get("customerId", Integer.class);
     }
+    
+    public Integer extractEmployeeId(String token) {
+        // Employee ID is stored in customerId claim
+        return parseClaims(token).get("customerId", Integer.class);
+    }
 }
