@@ -1,6 +1,7 @@
 package com.example.datn_sd_29.invoice.controller;
 
 import com.example.datn_sd_29.common.dto.ApiResponse;
+import com.example.datn_sd_29.invoice.dto.AddItemRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentCancelRequest;
@@ -78,5 +79,13 @@ public class PaymentController {
     ) {
         paymentService.updateItemQuantity(itemId, 0);
         return ResponseEntity.ok(ApiResponse.success("Deleted", null));
+    }
+
+    @PostMapping("/add-item")
+    public ResponseEntity<ApiResponse<Void>> addItem(
+            @Valid @RequestBody AddItemRequest request
+    ) {
+        paymentService.addItemToInvoice(request);
+        return ResponseEntity.ok(ApiResponse.success("Item added", null));
     }
 }

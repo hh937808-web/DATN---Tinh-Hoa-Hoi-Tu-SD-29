@@ -5,11 +5,16 @@ import com.example.datn_sd_29.common.service.InvoiceBroadcastService;
 import com.example.datn_sd_29.customer.entity.Customer;
 import com.example.datn_sd_29.dining_table.entity.DiningTable;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
+import com.example.datn_sd_29.invoice.dto.AddItemRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutRequest;
 import com.example.datn_sd_29.invoice.dto.PaymentCheckoutResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentDetailResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentItemResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse;
+import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.repository.ProductRepository;
+import com.example.datn_sd_29.product_combo.entity.ProductCombo;
+import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import com.example.datn_sd_29.invoice.entity.Invoice;
 import com.example.datn_sd_29.invoice.entity.InvoiceDiningTable;
 import com.example.datn_sd_29.invoice.entity.InvoiceItem;
@@ -73,6 +78,8 @@ public class PaymentService {
     private final DiningTableRepository diningTableRepository;
     private final TableStatusBroadcastService tableStatusBroadcastService;
     private final InvoiceBroadcastService invoiceBroadcastService;
+    private final ProductRepository productRepository;
+    private final ProductComboRepository productComboRepository;
 
     @Value("${security.api.enabled:true}")
     private boolean securityEnabled;
@@ -942,6 +949,84 @@ public class PaymentService {
             // Broadcast table status change via WebSocket (Requirement 4.2)
             tableStatusBroadcastService.broadcastTableStatusChange(tableIds, "AVAILABLE");
         }
+    }
+
+    @Transactional
+    public void addItemToInvoice(AddItemRequest request) {
+        if (request.getProductId() == null && request.getComboId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productId or comboId is required");
+        }
+        if (request.getProductId() != null && request.getComboId() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Specify only productId or comboId, not both");
+        }
+
+        // Step 1: find the invoice id without locking (via table link)
+        Invoice invoiceRef = getSingleInProgressInvoice(request.getTableId());
+
+        // Step 2: acquire PESSIMISTIC_WRITE lock on the invoice row to serialize
+        // concurrent adds — prevents SQL Server deadlock when multiple items are
+        // added to the same invoice simultaneously via Promise.all on the frontend.
+        Invoice invoice = invoiceRepository.findByIdForUpdate(invoiceRef.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found"));
+
+        // Step 3: resolve product/combo, then merge into existing row if possible
+        BigDecimal unitPrice;
+        BigDecimal addedAmount;
+
+        if (request.getProductId() != null) {
+            Product product = productRepository.findById(request.getProductId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
+            unitPrice = product.getUnitPrice();
+
+            InvoiceItem existing = invoiceItemRepository
+                    .findActiveByInvoiceAndProduct(invoice.getId(), product.getId())
+                    .orElse(null);
+
+            if (existing != null) {
+                // Merge: just add quantity to the existing row
+                existing.setQuantity(existing.getQuantity() + request.getQuantity());
+                invoiceItemRepository.save(existing);
+            } else {
+                InvoiceItem item = new InvoiceItem();
+                item.setInvoice(invoice);
+                item.setProduct(product);
+                item.setItemType("PRODUCT");
+                item.setUnitPrice(unitPrice);
+                item.setQuantity(request.getQuantity());
+                item.setStatus(InvoiceItemStatus.SERVED);
+                invoiceItemRepository.save(item);
+            }
+        } else {
+            ProductCombo combo = productComboRepository.findById(request.getComboId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Combo not found"));
+            unitPrice = combo.getComboPrice();
+
+            InvoiceItem existing = invoiceItemRepository
+                    .findActiveByInvoiceAndCombo(invoice.getId(), combo.getId())
+                    .orElse(null);
+
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity() + request.getQuantity());
+                invoiceItemRepository.save(existing);
+            } else {
+                InvoiceItem item = new InvoiceItem();
+                item.setInvoice(invoice);
+                item.setProductCombo(combo);
+                item.setItemType("COMBO");
+                item.setUnitPrice(unitPrice);
+                item.setQuantity(request.getQuantity());
+                item.setStatus(InvoiceItemStatus.SERVED);
+                invoiceItemRepository.save(item);
+            }
+        }
+
+        // Step 4: increment subtotal directly — avoids re-reading invoice_item rows
+        // while holding the INSERT lock (which was the deadlock cause).
+        addedAmount = unitPrice.multiply(BigDecimal.valueOf(request.getQuantity()));
+        BigDecimal newSubtotal = (invoice.getSubtotalAmount() != null ? invoice.getSubtotalAmount() : BigDecimal.ZERO)
+                .add(addedAmount);
+        invoice.setSubtotalAmount(newSubtotal);
+        invoiceRepository.save(invoice);
     }
 
     /**

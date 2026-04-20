@@ -40,6 +40,54 @@ public interface InvoiceItemRepository extends JpaRepository<InvoiceItem, Intege
                                                  @Param("endDate") LocalDateTime endDate,
                                                  org.springframework.data.domain.Pageable pageable);
 
+    @Query("""
+        select ii
+        from InvoiceItem ii
+        where ii.invoice.id = :invoiceId
+          and ii.product.id = :productId
+          and ii.status <> com.example.datn_sd_29.invoice.entity.InvoiceItemStatus.CANCELLED
+    """)
+    java.util.Optional<InvoiceItem> findActiveByInvoiceAndProduct(
+            @Param("invoiceId") Integer invoiceId,
+            @Param("productId") Integer productId);
+
+    @Query("""
+        select ii
+        from InvoiceItem ii
+        where ii.invoice.id = :invoiceId
+          and ii.productCombo.id = :comboId
+          and ii.status <> com.example.datn_sd_29.invoice.entity.InvoiceItemStatus.CANCELLED
+    """)
+    java.util.Optional<InvoiceItem> findActiveByInvoiceAndCombo(
+            @Param("invoiceId") Integer invoiceId,
+            @Param("comboId") Integer comboId);
+
+    @Query("""
+        select ii
+        from InvoiceItem ii
+        where ii.invoice.id = :invoiceId
+          and ii.product.id = :productId
+          and ii.status = com.example.datn_sd_29.invoice.entity.InvoiceItemStatus.SERVED
+          and ii.id <> :excludeId
+    """)
+    java.util.Optional<InvoiceItem> findServedByInvoiceAndProductExcluding(
+            @Param("invoiceId") Integer invoiceId,
+            @Param("productId") Integer productId,
+            @Param("excludeId") Integer excludeId);
+
+    @Query("""
+        select ii
+        from InvoiceItem ii
+        where ii.invoice.id = :invoiceId
+          and ii.productCombo.id = :comboId
+          and ii.status = com.example.datn_sd_29.invoice.entity.InvoiceItemStatus.SERVED
+          and ii.id <> :excludeId
+    """)
+    java.util.Optional<InvoiceItem> findServedByInvoiceAndComboExcluding(
+            @Param("invoiceId") Integer invoiceId,
+            @Param("comboId") Integer comboId,
+            @Param("excludeId") Integer excludeId);
+
     // ===== KITCHEN =====
     @Query("""
         select ii

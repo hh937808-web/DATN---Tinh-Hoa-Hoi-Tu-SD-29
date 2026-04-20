@@ -152,10 +152,35 @@ public class KitchenService {
             throw new RuntimeException("Only DONE items can be served");
         }
 
-        item.setStatus(InvoiceItemStatus.SERVED);
-        
-        // Broadcast kitchen update
+        // Capture name before potential merge/delete (lazy relations still in memory)
         String itemName = getItemName(item);
+
+        item.setStatus(InvoiceItemStatus.SERVED);
+
+        // After marking SERVED, merge with an existing SERVED row of the same item
+        // in the same invoice (happens when staff re-orders the same dish).
+        Integer invoiceId = item.getInvoice() != null ? item.getInvoice().getId() : null;
+        if (invoiceId != null) {
+            if (item.getProduct() != null) {
+                invoiceItemRepository
+                        .findServedByInvoiceAndProductExcluding(invoiceId, item.getProduct().getId(), item.getId())
+                        .ifPresent(existing -> {
+                            existing.setQuantity(existing.getQuantity() + item.getQuantity());
+                            invoiceItemRepository.save(existing);
+                            invoiceItemRepository.delete(item);
+                        });
+            } else if (item.getProductCombo() != null) {
+                invoiceItemRepository
+                        .findServedByInvoiceAndComboExcluding(invoiceId, item.getProductCombo().getId(), item.getId())
+                        .ifPresent(existing -> {
+                            existing.setQuantity(existing.getQuantity() + item.getQuantity());
+                            invoiceItemRepository.save(existing);
+                            invoiceItemRepository.delete(item);
+                        });
+            }
+        }
+
+        // Broadcast kitchen update
         kitchenBroadcastService.broadcastKitchenUpdate("STATUS_CHANGED", id, itemName);
     }
 

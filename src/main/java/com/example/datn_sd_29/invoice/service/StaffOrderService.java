@@ -16,6 +16,7 @@ import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceItemRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceRepository;
 import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.enums.ProductCategory;
 import com.example.datn_sd_29.product.repository.ProductRepository;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
 import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
@@ -383,9 +384,14 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Product not found"));
                 invoiceItem.setProduct(product);
                 invoiceItem.setUnitPrice(product.getUnitPrice());
-                
+
                 String versionId = productVersionService.createProductSnapshot(product);
                 invoiceItem.setProductVersionId(versionId);
+
+                // DRINK items are ready-made — skip kitchen, auto-mark SERVED
+                if (ProductCategory.DRINK.equals(product.getProductCategory())) {
+                    invoiceItem.setStatus(InvoiceItemStatus.SERVED);
+                }
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productComboId is required");
@@ -395,7 +401,7 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Combo not found"));
                 invoiceItem.setProductCombo(combo);
                 invoiceItem.setUnitPrice(combo.getComboPrice());
-                
+
                 String versionId = productVersionService.createComboSnapshot(combo);
                 invoiceItem.setProductVersionId(versionId);
             } else {
@@ -408,6 +414,18 @@ public class StaffOrderService {
                 );
             }
 
+            // DRINK (auto-SERVED): merge into existing SERVED row if any, skip creating new row
+            if (InvoiceItemStatus.SERVED.equals(invoiceItem.getStatus()) && "PRODUCT".equals(type)) {
+                InvoiceItem existing = invoiceItemRepository
+                        .findActiveByInvoiceAndProduct(invoice.getId(), invoiceItem.getProduct().getId())
+                        .orElse(null);
+                if (existing != null) {
+                    existing.setQuantity(existing.getQuantity() + invoiceItem.getQuantity());
+                    invoiceItemRepository.save(existing);
+                    continue; // merged — subtotal already counted, no new row needed
+                }
+            }
+
             toSave.add(invoiceItem);
         }
 
@@ -418,9 +436,14 @@ public class StaffOrderService {
                 : invoice.getSubtotalAmount();
         invoice.setSubtotalAmount(currentSubtotal.add(addedSubtotal));
         invoiceRepository.save(invoice);
-        
-        // Broadcast kitchen update
-        kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", toSave.size());
+
+        // Only broadcast to kitchen for items that need cooking (status ORDERED)
+        long kitchenCount = toSave.stream()
+                .filter(i -> InvoiceItemStatus.ORDERED.equals(i.getStatus()))
+                .count();
+        if (kitchenCount > 0) {
+            kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", (int) kitchenCount);
+        }
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
@@ -470,9 +493,14 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Product not found"));
                 invoiceItem.setProduct(product);
                 invoiceItem.setUnitPrice(product.getUnitPrice());
-                
+
                 String versionId = productVersionService.createProductSnapshot(product);
                 invoiceItem.setProductVersionId(versionId);
+
+                // DRINK items are ready-made — skip kitchen, auto-mark SERVED
+                if (ProductCategory.DRINK.equals(product.getProductCategory())) {
+                    invoiceItem.setStatus(InvoiceItemStatus.SERVED);
+                }
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productComboId is required");
@@ -482,7 +510,7 @@ public class StaffOrderService {
                                 HttpStatus.NOT_FOUND, "Combo not found"));
                 invoiceItem.setProductCombo(combo);
                 invoiceItem.setUnitPrice(combo.getComboPrice());
-                
+
                 String versionId = productVersionService.createComboSnapshot(combo);
                 invoiceItem.setProductVersionId(versionId);
             } else {
@@ -495,6 +523,18 @@ public class StaffOrderService {
                 );
             }
 
+            // DRINK (auto-SERVED): merge into existing SERVED row if any, skip creating new row
+            if (InvoiceItemStatus.SERVED.equals(invoiceItem.getStatus()) && "PRODUCT".equals(type)) {
+                InvoiceItem existing = invoiceItemRepository
+                        .findActiveByInvoiceAndProduct(invoice.getId(), invoiceItem.getProduct().getId())
+                        .orElse(null);
+                if (existing != null) {
+                    existing.setQuantity(existing.getQuantity() + invoiceItem.getQuantity());
+                    invoiceItemRepository.save(existing);
+                    continue; // merged — subtotal already counted, no new row needed
+                }
+            }
+
             toSave.add(invoiceItem);
         }
 
@@ -505,9 +545,14 @@ public class StaffOrderService {
                 : invoice.getSubtotalAmount();
         invoice.setSubtotalAmount(currentSubtotal.add(addedSubtotal));
         invoiceRepository.save(invoice);
-        
-        // Broadcast kitchen update
-        kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", toSave.size());
+
+        // Only broadcast to kitchen for items that need cooking (status ORDERED)
+        long kitchenCount = toSave.stream()
+                .filter(i -> InvoiceItemStatus.ORDERED.equals(i.getStatus()))
+                .count();
+        if (kitchenCount > 0) {
+            kitchenBroadcastService.broadcastBulkKitchenUpdate("ITEMS_ORDERED", (int) kitchenCount);
+        }
     }
 
     /**
