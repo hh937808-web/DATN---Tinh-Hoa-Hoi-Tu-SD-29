@@ -3,17 +3,23 @@ package com.example.datn_sd_29.dashboard.controller;
 import com.example.datn_sd_29.common.dto.ApiResponse;
 import com.example.datn_sd_29.dashboard.dto.DashboardStatsResponse;
 import com.example.datn_sd_29.dashboard.dto.RecentInvoiceResponse;
+import com.example.datn_sd_29.dashboard.dto.RevenueChartResponse;
 import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.dashboard.dto.InvoicePageResponse;
 import com.example.datn_sd_29.dashboard.service.DashboardService;
+import com.example.datn_sd_29.report.service.ExcelExportService;
+import com.example.datn_sd_29.report.service.PdfExportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Slf4j
@@ -22,6 +28,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DashboardController {
     private final DashboardService dashboardService;
+    private final ExcelExportService excelExportService;
+    private final PdfExportService pdfExportService;
 
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
     @GetMapping("/stats")
@@ -179,6 +187,72 @@ public class DashboardController {
             return ResponseEntity.status(500).body(
                 ApiResponse.error("Lỗi: " + e.getMessage(), null)
             );
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
+    @GetMapping("/export/excel")
+    public ResponseEntity<byte[]> exportDashboardExcel(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        try {
+            if (startDate == null) startDate = LocalDate.now();
+            if (endDate == null) endDate = startDate;
+
+            DashboardStatsResponse stats = dashboardService.getStats(startDate, endDate);
+            RevenueChartResponse chartData = dashboardService.getRevenueChart(startDate, endDate);
+            List<TopProductResponse> topProducts = dashboardService.getTopProducts(startDate, endDate, 5);
+            List<RecentInvoiceResponse> recentInvoices = dashboardService.getRecentInvoices(10);
+
+            byte[] excelData = excelExportService.exportDashboard(
+                stats, chartData, topProducts, recentInvoices, startDate, endDate);
+
+            String filename = String.format("dashboard-%s.xlsx",
+                LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+            headers.setContentDispositionFormData("attachment", filename);
+            headers.setContentLength(excelData.length);
+
+            return ResponseEntity.ok().headers(headers).body(excelData);
+        } catch (Exception e) {
+            log.error("Error exporting dashboard to Excel: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTION')")
+    @GetMapping("/export/pdf")
+    public ResponseEntity<byte[]> exportDashboardPdf(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        try {
+            if (startDate == null) startDate = LocalDate.now();
+            if (endDate == null) endDate = startDate;
+
+            DashboardStatsResponse stats = dashboardService.getStats(startDate, endDate);
+            RevenueChartResponse chartData = dashboardService.getRevenueChart(startDate, endDate);
+            List<TopProductResponse> topProducts = dashboardService.getTopProducts(startDate, endDate, 5);
+            List<RecentInvoiceResponse> recentInvoices = dashboardService.getRecentInvoices(10);
+
+            byte[] pdfData = pdfExportService.exportDashboard(
+                stats, chartData, topProducts, recentInvoices, startDate, endDate);
+
+            String filename = String.format("dashboard-%s.pdf",
+                LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", filename);
+            headers.setContentLength(pdfData.length);
+
+            return ResponseEntity.ok().headers(headers).body(pdfData);
+        } catch (Exception e) {
+            log.error("Error exporting dashboard to PDF: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).build();
         }
     }
 }

@@ -24,8 +24,22 @@ public class QueryExecutionService {
     
     // Dangerous SQL keywords that are not allowed
     private static final Set<String> FORBIDDEN_KEYWORDS = Set.of(
-        "DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", 
-        "UPDATE", "GRANT", "REVOKE", "EXEC", "EXECUTE"
+        // Data Modification
+        "INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE",
+        // Schema Modification
+        "CREATE", "ALTER", "DROP", "RENAME",
+        // Permissions
+        "GRANT", "REVOKE", "DENY",
+        // Execution
+        "EXEC", "EXECUTE", "SP_EXECUTESQL", "XP_CMDSHELL",
+        // Transactions (có thể gây lock) - removed BEGIN to avoid false positives
+        "COMMIT", "ROLLBACK", "SAVEPOINT",
+        // Backup/Restore
+        "BACKUP", "RESTORE",
+        // System Commands
+        "SHUTDOWN", "RECONFIGURE", "DBCC",
+        // Bulk Operations
+        "BULK", "OPENROWSET", "OPENDATASOURCE"
     );
     
     private static final Pattern COMMENT_PATTERN = Pattern.compile("--.*|/\\*.*?\\*/", Pattern.DOTALL);
@@ -40,7 +54,7 @@ public class QueryExecutionService {
             sql = request.getSqlQuery();
             validateSqlQuery(sql);
         } else {
-            throw new IllegalArgumentException("Invalid query type: " + request.getQueryType());
+            throw new IllegalArgumentException("Loại truy vấn không hợp lệ: " + request.getQueryType());
         }
         
         log.info("Executing query: {}", sql);
@@ -54,7 +68,7 @@ public class QueryExecutionService {
     
     private String buildSqlFromVisualQuery(QueryRequest.VisualQuery visualQuery) {
         if (visualQuery == null || visualQuery.getTableName() == null) {
-            throw new IllegalArgumentException("Visual query must have a table name");
+            throw new IllegalArgumentException("Truy vấn trực quan phải có tên bảng");
         }
         
         StringBuilder sql = new StringBuilder("SELECT ");
@@ -184,12 +198,15 @@ public class QueryExecutionService {
     
     private void validateSqlQuery(String sql) {
         if (sql == null || sql.trim().isEmpty()) {
-            throw new IllegalArgumentException("SQL query cannot be empty");
+            throw new IllegalArgumentException("Câu lệnh SQL không được để trống");
         }
         
         // Remove comments
-        String cleanSql = COMMENT_PATTERN.matcher(sql).replaceAll("");
+        String cleanSql = COMMENT_PATTERN.matcher(sql).replaceAll(" ");
         String upperSql = cleanSql.toUpperCase();
+        
+        // Remove extra whitespace
+        upperSql = upperSql.replaceAll("\\s+", " ").trim();
         
         // Check for forbidden keywords using word boundaries
         // This prevents false positives like "created_at" matching "CREATE"
@@ -197,18 +214,46 @@ public class QueryExecutionService {
             // Use regex with word boundaries to match only standalone keywords
             Pattern keywordPattern = Pattern.compile("\\b" + keyword + "\\b");
             if (keywordPattern.matcher(upperSql).find()) {
-                throw new SecurityException("Forbidden SQL keyword detected: " + keyword);
+                throw new SecurityException("Không được phép sử dụng lệnh " + keyword + ". Bạn chỉ được phép xem dữ liệu bằng SELECT, không được thêm/sửa/xóa dữ liệu hoặc thay đổi cấu trúc database.");
             }
         }
         
-        // Must start with SELECT
-        if (!upperSql.trim().startsWith("SELECT")) {
-            throw new SecurityException("Only SELECT queries are allowed");
+        // Must start with SELECT or WITH (for CTEs)
+        if (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH")) {
+            throw new SecurityException("CHỈ ĐƯỢC PHÉP TRUY VẤN DỮ LIỆU!\n\n" +
+                "Bạn chỉ được dùng lệnh SELECT để xem dữ liệu.\n" +
+                "Không được phép thêm, sửa, xóa dữ liệu hoặc thay đổi cấu trúc database.");
         }
         
-        // Check for multiple statements (semicolon)
-        if (cleanSql.contains(";") && !cleanSql.trim().endsWith(";")) {
-            throw new SecurityException("Multiple SQL statements are not allowed");
+        // If starts with WITH, must contain SELECT
+        if (upperSql.startsWith("WITH") && !upperSql.contains("SELECT")) {
+            throw new SecurityException("Câu lệnh WITH phải đi kèm với SELECT để truy vấn dữ liệu.");
+        }
+        
+        // Check for multiple statements (semicolon in the middle)
+        String trimmedSql = cleanSql.trim();
+        if (trimmedSql.contains(";")) {
+            // Allow only one semicolon at the end
+            int semicolonIndex = trimmedSql.indexOf(";");
+            if (semicolonIndex != trimmedSql.length() - 1) {
+                throw new SecurityException("Không được phép chạy nhiều câu lệnh SQL cùng lúc. Chỉ được phép 1 câu SELECT.");
+            }
+        }
+        
+        // Additional security: Check for SQL injection patterns
+        if (upperSql.contains("--") || upperSql.contains("/*") || upperSql.contains("*/")) {
+            // Comments were already removed, if they still exist, it's suspicious
+            throw new SecurityException("Không được phép sử dụng comment (-- hoặc /* */) trong SQL vì lý do bảo mật.");
+        }
+        
+        // Check for xp_ system procedures (SQL Server specific)
+        if (upperSql.contains("XP_")) {
+            throw new SecurityException("Không được phép gọi system procedures (xp_cmdshell, etc.) vì lý do bảo mật.");
+        }
+        
+        // Check for OPENROWSET, OPENDATASOURCE (can be used to access external data)
+        if (upperSql.contains("OPENROWSET") || upperSql.contains("OPENDATASOURCE")) {
+            throw new SecurityException("Không được phép truy cập dữ liệu từ nguồn bên ngoài (OPENROWSET, OPENDATASOURCE).");
         }
     }
     

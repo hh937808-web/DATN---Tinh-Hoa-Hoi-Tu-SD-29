@@ -1,5 +1,9 @@
 package com.example.datn_sd_29.report.service;
 
+import com.example.datn_sd_29.dashboard.dto.DashboardStatsResponse;
+import com.example.datn_sd_29.dashboard.dto.RecentInvoiceResponse;
+import com.example.datn_sd_29.dashboard.dto.RevenueChartResponse;
+import com.example.datn_sd_29.dashboard.dto.TopProductResponse;
 import com.example.datn_sd_29.report.dto.ProductReportResponse;
 import com.example.datn_sd_29.report.dto.RevenueReportResponse;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +15,12 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -414,5 +423,351 @@ public class ExcelExportService {
             case "DESSERT": return "Tráng miệng";
             default: return category;
         }
+    }
+
+    private String getStatusName(String status) {
+        switch (status) {
+            case "PAID": return "Đã thanh toán";
+            case "IN_PROGRESS": return "Đang phục vụ";
+            case "RESERVED": return "Đã đặt bàn";
+            case "CANCELLED": return "Đã hủy";
+            case "NO_SHOW": return "Không đến";
+            default: return status;
+        }
+    }
+
+    public byte[] exportDashboard(
+            DashboardStatsResponse stats,
+            RevenueChartResponse chartData,
+            List<TopProductResponse> topProducts,
+            List<RecentInvoiceResponse> recentInvoices,
+            LocalDate startDate,
+            LocalDate endDate
+    ) throws IOException {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle titleStyle = createTitleStyle(workbook);
+            CellStyle dataStyle = createDataStyle(workbook);
+            CellStyle dataLabelStyle = createDataLabelStyle(workbook);
+            CellStyle moneyStyle = createMoneyStyle(workbook);
+            CellStyle dateStyle = createDateStyle(workbook);
+
+            // ========== Sheet 1: Tổng quan ==========
+            Sheet overviewSheet = workbook.createSheet("Tổng quan");
+            int rowNum = 0;
+
+            Row titleRow = overviewSheet.createRow(rowNum++);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("BÁO CÁO DASHBOARD");
+            titleCell.setCellStyle(titleStyle);
+            overviewSheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 4));
+
+            rowNum++;
+
+            Row dateRow = overviewSheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("Từ ngày:");
+            dateRow.getCell(0).setCellStyle(dataLabelStyle);
+            dateRow.createCell(1).setCellValue(startDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            dateRow.getCell(1).setCellStyle(dateStyle);
+            dateRow.createCell(2).setCellValue("Đến ngày:");
+            dateRow.getCell(2).setCellStyle(dataLabelStyle);
+            dateRow.createCell(3).setCellValue(endDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            dateRow.getCell(3).setCellStyle(dateStyle);
+
+            rowNum++;
+
+            Row statsHeader = overviewSheet.createRow(rowNum++);
+            statsHeader.createCell(0).setCellValue("THỐNG KÊ TỔNG QUAN");
+            statsHeader.getCell(0).setCellStyle(headerStyle);
+            overviewSheet.addMergedRegion(new CellRangeAddress(rowNum - 1, rowNum - 1, 0, 1));
+
+            if (stats.getTodayRevenue() != null) {
+                createDataRow(overviewSheet, rowNum++, "Doanh thu:", stats.getTodayRevenue().getAmount().doubleValue(), dataLabelStyle, moneyStyle);
+                createDataRow(overviewSheet, rowNum++, "% thay đổi:", stats.getTodayRevenue().getPercentChange(), dataLabelStyle, dataStyle);
+            }
+            if (stats.getTodayInvoices() != null) {
+                createDataRow(overviewSheet, rowNum++, "Số hóa đơn:", stats.getTodayInvoices().getCount(), dataLabelStyle, dataStyle);
+            }
+            if (stats.getTodayCustomers() != null) {
+                createDataRow(overviewSheet, rowNum++, "Khách hàng:", stats.getTodayCustomers().getCount(), dataLabelStyle, dataStyle);
+            }
+            if (stats.getActiveTables() != null) {
+                Row tableRow = overviewSheet.createRow(rowNum++);
+                tableRow.createCell(0).setCellValue("Bàn đang phục vụ:");
+                tableRow.getCell(0).setCellStyle(dataLabelStyle);
+                Cell tableVal = tableRow.createCell(1);
+                tableVal.setCellValue(stats.getActiveTables().getOccupied() + "/" + stats.getActiveTables().getTotal());
+                tableVal.setCellStyle(dataStyle);
+            }
+
+            for (int i = 0; i < 5; i++) {
+                overviewSheet.autoSizeColumn(i);
+                overviewSheet.setColumnWidth(i, overviewSheet.getColumnWidth(i) + 1000);
+            }
+
+            // ========== Sheet 2: Doanh thu theo ngày ==========
+            if (chartData != null && chartData.getLabels() != null && !chartData.getLabels().isEmpty()) {
+                Sheet chartSheet = workbook.createSheet("Doanh thu theo ngày");
+                int cRow = 0;
+
+                Row cTitle = chartSheet.createRow(cRow++);
+                cTitle.createCell(0).setCellValue("DOANH THU THEO NGÀY");
+                cTitle.getCell(0).setCellStyle(titleStyle);
+                chartSheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 1));
+                cRow++;
+
+                Row cHeader = chartSheet.createRow(cRow++);
+                cHeader.createCell(0).setCellValue("Ngày");
+                cHeader.getCell(0).setCellStyle(headerStyle);
+                cHeader.createCell(1).setCellValue("Doanh thu");
+                cHeader.getCell(1).setCellStyle(headerStyle);
+
+                for (int i = 0; i < chartData.getLabels().size(); i++) {
+                    Row cDataRow = chartSheet.createRow(cRow++);
+                    Cell labelCell = cDataRow.createCell(0);
+                    labelCell.setCellValue(chartData.getLabels().get(i));
+                    labelCell.setCellStyle(dateStyle);
+                    Cell valCell = cDataRow.createCell(1);
+                    valCell.setCellValue(chartData.getData().get(i).doubleValue());
+                    valCell.setCellStyle(moneyStyle);
+                }
+
+                chartSheet.autoSizeColumn(0);
+                chartSheet.autoSizeColumn(1);
+                chartSheet.setColumnWidth(0, chartSheet.getColumnWidth(0) + 1000);
+                chartSheet.setColumnWidth(1, chartSheet.getColumnWidth(1) + 1000);
+            }
+
+            // ========== Sheet 3: Top sản phẩm ==========
+            if (topProducts != null && !topProducts.isEmpty()) {
+                Sheet prodSheet = workbook.createSheet("Top sản phẩm");
+                int pRow = 0;
+
+                Row pTitle = prodSheet.createRow(pRow++);
+                pTitle.createCell(0).setCellValue("TOP SẢN PHẨM BÁN CHẠY");
+                pTitle.getCell(0).setCellStyle(titleStyle);
+                prodSheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 3));
+                pRow++;
+
+                Row pHeader = prodSheet.createRow(pRow++);
+                String[] prodHeaders = {"Hạng", "Tên sản phẩm", "Số lượng", "Doanh thu"};
+                for (int i = 0; i < prodHeaders.length; i++) {
+                    pHeader.createCell(i).setCellValue(prodHeaders[i]);
+                    pHeader.getCell(i).setCellStyle(headerStyle);
+                }
+
+                int rank = 1;
+                for (TopProductResponse p : topProducts) {
+                    Row pDataRow = prodSheet.createRow(pRow++);
+                    pDataRow.createCell(0).setCellValue(rank++);
+                    pDataRow.getCell(0).setCellStyle(dataStyle);
+                    pDataRow.createCell(1).setCellValue(p.getName());
+                    pDataRow.getCell(1).setCellStyle(dataStyle);
+                    pDataRow.createCell(2).setCellValue(p.getQuantity());
+                    pDataRow.getCell(2).setCellStyle(dataStyle);
+                    Cell revCell = pDataRow.createCell(3);
+                    revCell.setCellValue(p.getRevenue().doubleValue());
+                    revCell.setCellStyle(moneyStyle);
+                }
+
+                for (int i = 0; i < 4; i++) {
+                    prodSheet.autoSizeColumn(i);
+                    prodSheet.setColumnWidth(i, prodSheet.getColumnWidth(i) + 1000);
+                }
+            }
+
+            // ========== Sheet 4: Hóa đơn gần đây ==========
+            if (recentInvoices != null && !recentInvoices.isEmpty()) {
+                Sheet invSheet = workbook.createSheet("Hóa đơn gần đây");
+                int iRow = 0;
+
+                Row iTitle = invSheet.createRow(iRow++);
+                iTitle.createCell(0).setCellValue("HÓA ĐƠN GẦN ĐÂY");
+                iTitle.getCell(0).setCellStyle(titleStyle);
+                invSheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 4));
+                iRow++;
+
+                Row iHeader = invSheet.createRow(iRow++);
+                String[] invHeaders = {"Mã hóa đơn", "Bàn", "Thời gian", "Tổng tiền", "Trạng thái"};
+                for (int i = 0; i < invHeaders.length; i++) {
+                    iHeader.createCell(i).setCellValue(invHeaders[i]);
+                    iHeader.getCell(i).setCellStyle(headerStyle);
+                }
+
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.systemDefault());
+
+                for (RecentInvoiceResponse inv : recentInvoices) {
+                    Row iDataRow = invSheet.createRow(iRow++);
+                    iDataRow.createCell(0).setCellValue(inv.getCode() != null ? inv.getCode() : "");
+                    iDataRow.getCell(0).setCellStyle(dataStyle);
+                    iDataRow.createCell(1).setCellValue(inv.getTable() != null ? inv.getTable() : "N/A");
+                    iDataRow.getCell(1).setCellStyle(dataStyle);
+                    Cell timeCell = iDataRow.createCell(2);
+                    timeCell.setCellValue(inv.getTime() != null ? dtf.format(inv.getTime()) : "N/A");
+                    timeCell.setCellStyle(dateStyle);
+                    Cell amountCell = iDataRow.createCell(3);
+                    amountCell.setCellValue(inv.getFinalAmount() != null ? inv.getFinalAmount().doubleValue() : 0);
+                    amountCell.setCellStyle(moneyStyle);
+                    iDataRow.createCell(4).setCellValue(getStatusName(inv.getStatus() != null ? inv.getStatus() : ""));
+                    iDataRow.getCell(4).setCellStyle(dataStyle);
+                }
+
+                for (int i = 0; i < 5; i++) {
+                    invSheet.autoSizeColumn(i);
+                    invSheet.setColumnWidth(i, invSheet.getColumnWidth(i) + 1000);
+                }
+            }
+
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    /**
+     * Export Custom Dashboard - tất cả widget gộp vào 1 sheet duy nhất
+     */
+    public byte[] exportCustomDashboard(
+            String dashboardName,
+            List<WidgetExportData> widgetDataList
+    ) throws IOException {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            // Header cột: nền xanh, chữ trắng, bold
+            CellStyle colHeaderStyle = createHeaderStyle(workbook);
+
+            // Tên widget: bold, không nền
+            CellStyle widgetTitleStyle = workbook.createCellStyle();
+            Font wFont = workbook.createFont();
+            wFont.setBold(true);
+            wFont.setFontHeightInPoints((short) 11);
+            widgetTitleStyle.setFont(wFont);
+            widgetTitleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            // Dữ liệu: trắng, border mỏng
+            CellStyle dataStyle = createDataStyle(workbook);
+
+            // Số: trắng, border mỏng, canh phải, format #,##0
+            CellStyle numStyle = workbook.createCellStyle();
+            numStyle.cloneStyleFrom(dataStyle);
+            numStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            numStyle.setAlignment(HorizontalAlignment.RIGHT);
+
+            int maxCols = widgetDataList.stream()
+                .mapToInt(w -> Math.max(w.getColumns().size(), 1))
+                .max().orElse(1);
+
+            Sheet sheet = workbook.createSheet(sanitizeSheetName(dashboardName, 1));
+
+            // Theo dõi độ rộng tối đa mỗi cột (số ký tự)
+            int[] maxCharPerCol = new int[maxCols];
+
+            int rowNum = 0;
+
+            // Dòng tiêu đề dashboard
+            Row titleRow = sheet.createRow(rowNum++);
+            titleRow.setHeightInPoints(22);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(dashboardName + " — Ngày xuất: " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            Font titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 12);
+            CellStyle titleStyle = workbook.createCellStyle();
+            titleStyle.setFont(titleFont);
+            titleCell.setCellStyle(titleStyle);
+            if (maxCols > 1) {
+                sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, maxCols - 1));
+            }
+
+            rowNum++; // dòng trống
+
+            for (WidgetExportData widget : widgetDataList) {
+                int numCols = widget.getColumns().size();
+
+                // Tên widget
+                Row wTitleRow = sheet.createRow(rowNum++);
+                wTitleRow.setHeightInPoints(20);
+                Cell wTitleCell = wTitleRow.createCell(0);
+                wTitleCell.setCellValue(widget.getQueryName());
+                wTitleCell.setCellStyle(widgetTitleStyle);
+
+                // Header cột
+                Row headerRow = sheet.createRow(rowNum++);
+                headerRow.setHeightInPoints(20);
+                for (int c = 0; c < numCols; c++) {
+                    String h = widget.getColumns().get(c);
+                    Cell cell = headerRow.createCell(c);
+                    cell.setCellValue(h != null ? h : "");
+                    cell.setCellStyle(colHeaderStyle);
+                    if (h != null) maxCharPerCol[c] = Math.max(maxCharPerCol[c], h.length());
+                }
+
+                // Dữ liệu
+                if (widget.getRows() == null || widget.getRows().isEmpty()) {
+                    Row r = sheet.createRow(rowNum++);
+                    Cell c = r.createCell(0);
+                    c.setCellValue("(Không có dữ liệu)");
+                    c.setCellStyle(dataStyle);
+                } else {
+                    for (Map<String, Object> row : widget.getRows()) {
+                        Row dataRow = sheet.createRow(rowNum++);
+                        dataRow.setHeightInPoints(18);
+                        int colIdx = 0;
+                        for (String key : widget.getColumnKeys()) {
+                            Cell cell = dataRow.createCell(colIdx);
+                            Object val = row.get(key);
+                            if (val == null) {
+                                cell.setCellValue("");
+                                cell.setCellStyle(dataStyle);
+                            } else if (val instanceof Number) {
+                                double dv = ((Number) val).doubleValue();
+                                cell.setCellValue(dv);
+                                cell.setCellStyle(numStyle);
+                                maxCharPerCol[colIdx] = Math.max(maxCharPerCol[colIdx],
+                                    String.format("%,.0f", dv).length() + 2);
+                            } else {
+                                String sv = val.toString();
+                                cell.setCellValue(sv);
+                                cell.setCellStyle(dataStyle);
+                                maxCharPerCol[colIdx] = Math.max(maxCharPerCol[colIdx], sv.length());
+                            }
+                            colIdx++;
+                        }
+                    }
+                }
+
+                rowNum++; // dòng trống giữa các widget
+            }
+
+            // Độ rộng cột: 512 POI units/ký tự, tối thiểu 12 ký tự, tối đa ~15cm
+            for (int c = 0; c < maxCols; c++) {
+                int chars = Math.max(maxCharPerCol[c], 12);
+                sheet.setColumnWidth(c, Math.min(chars * 512 + 1024, 25000));
+            }
+
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private String sanitizeSheetName(String name, int index) {
+        if (name == null || name.trim().isEmpty()) {
+            return "Sheet " + index;
+        }
+        String cleaned = name.replaceAll("[\\\\/:*?\\[\\]]", " ").trim();
+        if (cleaned.length() > 28) {
+            cleaned = cleaned.substring(0, 28);
+        }
+        return cleaned;
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    public static class WidgetExportData {
+        private String queryName;
+        private List<String> columns;      // display names (tiếng Việt)
+        private List<String> columnKeys;   // actual keys from query result
+        private List<Map<String, Object>> rows;
     }
 }

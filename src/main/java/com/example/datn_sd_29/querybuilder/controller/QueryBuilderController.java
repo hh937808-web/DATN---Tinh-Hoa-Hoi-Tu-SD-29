@@ -18,12 +18,19 @@ import com.example.datn_sd_29.querybuilder.service.DashboardLayoutService;
 import com.example.datn_sd_29.querybuilder.service.DatabaseMetadataService;
 import com.example.datn_sd_29.querybuilder.service.QueryExecutionService;
 import com.example.datn_sd_29.querybuilder.service.SavedQueryService;
+import com.example.datn_sd_29.report.service.ExcelExportService;
+import com.example.datn_sd_29.report.service.PdfExportService;
 import com.example.datn_sd_29.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -40,6 +47,8 @@ public class QueryBuilderController {
     private final DashboardLayoutService dashboardLayoutService;
     private final CustomDashboardService customDashboardService;
     private final JwtService jwtService;
+    private final ExcelExportService excelExportService;
+    private final PdfExportService pdfExportService;
     
     @GetMapping("/metadata/tables")
     public ResponseEntity<ApiResponse<List<TableMetadataResponse>>> getAllTables() {
@@ -442,5 +451,116 @@ public class QueryBuilderController {
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to remove dashboard layout: " + e.getMessage(), null));
         }
+    }
+
+    // ============================================
+    // CUSTOM DASHBOARD EXPORT ENDPOINTS
+    // ============================================
+
+    @GetMapping("/dashboards/{dashboardId}/export/excel")
+    public ResponseEntity<byte[]> exportCustomDashboardExcel(
+            @PathVariable Long dashboardId,
+            @RequestHeader(value = "Authorization", required = false) String token) {
+        try {
+            Integer employeeId = extractEmployeeId(token);
+            DashboardResponse dashboard = customDashboardService.getDashboard(dashboardId, employeeId);
+            List<DashboardLayoutResponse> layouts = dashboardLayoutService.getDashboardLayouts(dashboardId, employeeId);
+
+            List<ExcelExportService.WidgetExportData> widgetDataList = buildWidgetExportData(layouts);
+
+            byte[] excelData = excelExportService.exportCustomDashboard(
+                dashboard.getDashboardName(), widgetDataList);
+
+            String filename = String.format("custom-dashboard-%s.xlsx",
+                LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+            headers.setContentDispositionFormData("attachment", filename);
+            headers.setContentLength(excelData.length);
+
+            return ResponseEntity.ok().headers(headers).body(excelData);
+        } catch (Exception e) {
+            log.error("Error exporting custom dashboard to Excel", e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/export/pdf")
+    public ResponseEntity<byte[]> exportCustomDashboardPdf(
+            @PathVariable Long dashboardId,
+            @RequestHeader(value = "Authorization", required = false) String token) {
+        try {
+            Integer employeeId = extractEmployeeId(token);
+            DashboardResponse dashboard = customDashboardService.getDashboard(dashboardId, employeeId);
+            List<DashboardLayoutResponse> layouts = dashboardLayoutService.getDashboardLayouts(dashboardId, employeeId);
+
+            List<ExcelExportService.WidgetExportData> widgetDataList = buildWidgetExportData(layouts);
+
+            byte[] pdfData = pdfExportService.exportCustomDashboard(
+                dashboard.getDashboardName(), widgetDataList);
+
+            String filename = String.format("custom-dashboard-%s.pdf",
+                LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", filename);
+            headers.setContentLength(pdfData.length);
+
+            return ResponseEntity.ok().headers(headers).body(pdfData);
+        } catch (Exception e) {
+            log.error("Error exporting custom dashboard to PDF", e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    private Integer extractEmployeeId(String token) {
+        Integer employeeId = 1;
+        if (token != null && token.startsWith("Bearer ")) {
+            try {
+                employeeId = jwtService.extractEmployeeId(token.substring(7));
+            } catch (Exception e) {
+                log.warn("Failed to extract employeeId from token, using default: {}", e.getMessage());
+            }
+        }
+        return employeeId;
+    }
+
+    private List<ExcelExportService.WidgetExportData> buildWidgetExportData(
+            List<DashboardLayoutResponse> layouts) {
+        List<ExcelExportService.WidgetExportData> widgetDataList = new ArrayList<>();
+
+        for (DashboardLayoutResponse layout : layouts) {
+            try {
+                SavedQuery savedQuery = savedQueryService.getQuery(layout.getSavedQueryId());
+                QueryRequest queryDef = savedQueryService.getQueryDefinition(layout.getSavedQueryId());
+                QueryResponse result = queryExecutionService.executeQuery(queryDef);
+
+                if (result == null || result.getColumns() == null || result.getRows() == null) {
+                    continue;
+                }
+
+                List<String> displayNames = new ArrayList<>();
+                List<String> columnKeys = new ArrayList<>();
+                for (QueryResponse.ColumnInfo col : result.getColumns()) {
+                    displayNames.add(col.getDisplayName() != null ? col.getDisplayName() : col.getName());
+                    columnKeys.add(col.getDisplayName() != null ? col.getDisplayName() : col.getName());
+                }
+
+                widgetDataList.add(new ExcelExportService.WidgetExportData(
+                    savedQuery.getName(),
+                    displayNames,
+                    columnKeys,
+                    result.getRows()
+                ));
+            } catch (Exception e) {
+                log.warn("Failed to export widget for savedQueryId {}: {}",
+                    layout.getSavedQueryId(), e.getMessage());
+            }
+        }
+
+        return widgetDataList;
     }
 }

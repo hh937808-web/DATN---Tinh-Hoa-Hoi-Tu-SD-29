@@ -158,6 +158,14 @@ public class AiQueryService {
         schema.append("    WHEN 'ACTIVE' THEN N'Đang Bán'\n");
         schema.append("    WHEN 'INACTIVE' THEN N'Ngừng Bán'\n");
         schema.append("  END\n\n");
+        schema.append("Product.category:\n");
+        schema.append("  CASE status\n");
+        schema.append("    WHEN 'RAW_FOOD' THEN N'Đồ sống'\n");
+        schema.append("    WHEN 'COOKED_FOOD' THEN N'Đồ chín'\n");
+        schema.append("    WHEN 'DRINK' THEN N'Đồ uống'\n");
+        schema.append("    WHEN 'HOT_POT_BROTH' THEN N'Nước lẩu'\n");
+        schema.append("    WHEN 'DESSERT' THEN N'Tráng miệng'\n");
+        schema.append("  END\n\n");
         
         return schema.toString();
     }
@@ -394,7 +402,7 @@ public class AiQueryService {
             - role → Vai Trò (PHẢI dùng CASE WHEN convert)
             - status → Trạng Thái (PHẢI dùng CASE WHEN convert)
             - capacity → Sức Chứa
-            - price → Giá
+            - unitPrice → Giá *Chú ý unitPrice*
             - combo_id → Mã Combo
             - combo_name → Tên Combo
             - SUM(final_amount) → Tổng Doanh Thu
