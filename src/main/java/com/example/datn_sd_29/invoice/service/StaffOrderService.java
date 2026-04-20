@@ -392,6 +392,10 @@ public class StaffOrderService {
                 if (ProductCategory.DRINK.equals(product.getProductCategory())) {
                     invoiceItem.setStatus(InvoiceItemStatus.SERVED);
                 }
+                // DESSERT items are held until staff activates them
+                else if (ProductCategory.DESSERT.equals(product.getProductCategory())) {
+                    invoiceItem.setStatus(InvoiceItemStatus.PENDING);
+                }
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productComboId is required");
@@ -500,6 +504,10 @@ public class StaffOrderService {
                 // DRINK items are ready-made — skip kitchen, auto-mark SERVED
                 if (ProductCategory.DRINK.equals(product.getProductCategory())) {
                     invoiceItem.setStatus(InvoiceItemStatus.SERVED);
+                }
+                // DESSERT items are held until staff activates them
+                else if (ProductCategory.DESSERT.equals(product.getProductCategory())) {
+                    invoiceItem.setStatus(InvoiceItemStatus.PENDING);
                 }
             } else if ("COMBO".equals(type)) {
                 if (item.getProductComboId() == null) {

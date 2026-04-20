@@ -5,6 +5,7 @@ import com.example.datn_sd_29.invoice.dto.InvoiceGroupResponse;
 import com.example.datn_sd_29.invoice.dto.InvoiceItemResponse;
 import com.example.datn_sd_29.invoice.dto.StaffTableResponse;
 import com.example.datn_sd_29.invoice.dto.TableOrderRequest;
+import com.example.datn_sd_29.invoice.service.KitchenService;
 import com.example.datn_sd_29.invoice.service.StaffOrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StaffOrderController {
     private final StaffOrderService staffOrderService;
+    private final KitchenService kitchenService;
 
     @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/invoices/in-progress")
@@ -71,5 +74,12 @@ public class StaffOrderController {
     ) {
         staffOrderService.addItemsToTable(tableId, request.getItems());
         return ResponseEntity.ok(ApiResponse.success("Order success", null));
+    }
+
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
+    @PutMapping("/invoices/items/{itemId}/activate")
+    public ResponseEntity<ApiResponse<Void>> activateDessert(@PathVariable Integer itemId) {
+        kitchenService.activateItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success("Dessert activated", null));
     }
 }

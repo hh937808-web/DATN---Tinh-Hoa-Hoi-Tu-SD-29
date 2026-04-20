@@ -108,6 +108,21 @@ public class KitchenService {
         return new ArrayList<>(map.values());
     }
 
+    // ================= ACTIVATE DESSERT =================
+    @Transactional
+    public void activateItem(Integer id) {
+        InvoiceItem item = getItemOrThrow(id);
+
+        if (item.getStatus() != InvoiceItemStatus.PENDING) {
+            throw new RuntimeException("Only PENDING items can be activated");
+        }
+
+        item.setStatus(InvoiceItemStatus.ORDERED);
+
+        String itemName = getItemName(item);
+        kitchenBroadcastService.broadcastKitchenUpdate("ITEMS_ORDERED", id, itemName);
+    }
+
     // ================= START COOKING =================
     @Transactional
     public void startCooking(Integer id) {
