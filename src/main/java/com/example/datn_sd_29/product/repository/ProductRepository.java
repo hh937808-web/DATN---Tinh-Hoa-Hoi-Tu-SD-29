@@ -24,4 +24,8 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     );
     
     List<Product> findByAvailabilityStatusNot(ProductStatus status);
+
+    boolean existsByProductCode(String productCode);
+
+    boolean existsByProductCodeAndIdNot(String productCode, Integer id);
 }

@@ -46,4 +46,8 @@ public class ProductCombo {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
+    @Size(max = 50)
+    @Column(name = "combo_code", length = 50, unique = true)
+    private String comboCode;
+
 }

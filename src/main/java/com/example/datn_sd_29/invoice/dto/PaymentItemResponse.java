@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 @Setter
 public class PaymentItemResponse {
     private Integer id;
+    private String code; // productCode or comboCode
     private String name;
     private String type; // PRODUCT | COMBO
     private Integer quantity;

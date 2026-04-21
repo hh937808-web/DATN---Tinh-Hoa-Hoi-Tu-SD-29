@@ -13,6 +13,7 @@ public class ProductComboResponse {
     private String description;
     private BigDecimal comboPrice;
     private Boolean isActive;
+    private String comboCode;
 
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant createdAt;
@@ -26,6 +27,7 @@ public class ProductComboResponse {
         this.description = combo.getDescription();
         this.comboPrice = combo.getComboPrice();
         this.isActive = combo.getIsActive();
+        this.comboCode = combo.getComboCode();
         this.createdAt = combo.getCreatedAt();
         this.updatedAt = combo.getUpdatedAt();
     }
@@ -84,5 +86,13 @@ public class ProductComboResponse {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getComboCode() {
+        return comboCode;
+    }
+
+    public void setComboCode(String comboCode) {
+        this.comboCode = comboCode;
     }
 }

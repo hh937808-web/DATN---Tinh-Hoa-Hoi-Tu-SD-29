@@ -36,11 +36,13 @@ public class ImageService {
 
     public ImageResponse getPrimaryProductImage(Integer productId) {
 
-        Image image = imageRepository
-                .findByProduct_IdAndIsPrimaryTrue(productId)
-                .orElseThrow(() -> new RuntimeException("Primary image not found"));
+        List<Image> images = imageRepository
+                .findByProduct_IdAndIsPrimaryTrue(productId);
+        if (images.isEmpty()) {
+            throw new RuntimeException("Primary image not found");
+        }
 
-        return new ImageResponse(image);
+        return new ImageResponse(images.get(0));
     }
 
 
@@ -56,11 +58,13 @@ public class ImageService {
 
     public ImageResponse getPrimaryProductComboImage(Integer comboId) {
 
-        Image image = imageRepository
-                .findByProductCombo_IdAndIsPrimaryTrue(comboId)
-                .orElseThrow(() -> new RuntimeException("Primary image not found"));
+        List<Image> images = imageRepository
+                .findByProductCombo_IdAndIsPrimaryTrue(comboId);
+        if (images.isEmpty()) {
+            throw new RuntimeException("Primary image not found");
+        }
 
-        return new ImageResponse(image);
+        return new ImageResponse(images.get(0));
     }
 
     public ImageResponse uploadComboImage(Integer comboId, MultipartFile file) throws IOException {

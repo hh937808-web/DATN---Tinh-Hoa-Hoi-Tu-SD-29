@@ -29,6 +29,9 @@ public class ProductRequest {
     @NotNull(message = "Availability status is required")
     private ProductStatus availabilityStatus;
 
+    @Size(max = 50, message = "Mã sản phẩm tối đa 50 ký tự")
+    private String productCode;
+
     public ProductRequest() {
     }
 
@@ -70,5 +73,13 @@ public class ProductRequest {
 
     public void setAvailabilityStatus(ProductStatus availabilityStatus) {
         this.availabilityStatus = availabilityStatus;
+    }
+
+    public String getProductCode() {
+        return productCode;
+    }
+
+    public void setProductCode(String productCode) {
+        this.productCode = productCode;
     }
 }

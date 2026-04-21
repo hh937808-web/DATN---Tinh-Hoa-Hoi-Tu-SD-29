@@ -31,16 +31,30 @@ public class ProductComboService {
     }
 
     public ProductComboResponse createProductCombo(ProductComboRequest request) {
+        String code = request.getComboCode();
+        if (code != null && !code.isBlank()) {
+            if (productComboRepository.existsByComboCode(code)) {
+                throw new IllegalArgumentException("Mã combo '" + code + "' đã tồn tại");
+            }
+        }
+
         ProductCombo combo = new ProductCombo();
         combo.setComboName(request.getComboName());
         combo.setDescription(request.getDescription());
         combo.setComboPrice(request.getComboPrice());
         combo.setIsActive(true);
         combo.setCreatedAt(Instant.now());
+        // Save trước để lấy ID auto-generate
+        ProductCombo saved = productComboRepository.save(combo);
 
-        return new ProductComboResponse(
-                productComboRepository.save(combo)
-        );
+        // Tự động tạo mã nếu không cung cấp
+        if (code == null || code.isBlank()) {
+            saved.setComboCode("COMBO-" + String.format("%05d", saved.getId()));
+        } else {
+            saved.setComboCode(code);
+        }
+
+        return new ProductComboResponse(productComboRepository.save(saved));
     }
 
     public ProductComboResponse updateProductCombo(Integer id, ProductComboRequest request) {
@@ -48,28 +62,22 @@ public class ProductComboService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("ProductCombo not found with id: " + id)
                 );
-        if (combo.getIsActive()
-                && Boolean.FALSE.equals(request.getIsActive())) {
-            throw new IllegalArgumentException(
-                    "Không được cập nhật trạng thái từ ACTIVE sang INACTIVE."
-            );
+        String code = request.getComboCode();
+        if (code != null && !code.isBlank()) {
+            if (productComboRepository.existsByComboCodeAndIdNot(code, id)) {
+                throw new IllegalArgumentException("Mã combo '" + code + "' đã tồn tại");
+            }
+            combo.setComboCode(code);
         }
 
         combo.setComboName(request.getComboName());
         combo.setDescription(request.getDescription());
         combo.setComboPrice(request.getComboPrice());
-
-
-        if (!combo.getIsActive()
-                && Boolean.TRUE.equals(request.getIsActive())) {
-            combo.setIsActive(true);
-        }
+        combo.setIsActive(request.getIsActive());
 
         combo.setUpdatedAt(Instant.now());
 
-        return new ProductComboResponse(
-                productComboRepository.save(combo)
-        );
+        return new ProductComboResponse(productComboRepository.save(combo));
     }
 
     // delete = true -> false

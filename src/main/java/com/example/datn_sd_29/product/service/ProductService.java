@@ -40,6 +40,12 @@ public class ProductService {
     }
 
     public ProductResponse createProduct(ProductRequest request) {
+        String code = request.getProductCode();
+        if (code != null && !code.isBlank()) {
+            if (productRepository.existsByProductCode(code)) {
+                throw new IllegalArgumentException("Mã sản phẩm '" + code + "' đã tồn tại");
+            }
+        }
 
         Product product = new Product();
         product.setProductName(request.getProductName());
@@ -47,7 +53,17 @@ public class ProductService {
         product.setUnitPrice(request.getUnitPrice());
         product.setDescription(request.getDescription());
         product.setAvailabilityStatus(request.getAvailabilityStatus());
+        product.setStockQuantity(0);
+        // Save trước để lấy ID auto-generate
         Product saved = productRepository.save(product);
+
+        // Tự động tạo mã nếu không cung cấp
+        if (code == null || code.isBlank()) {
+            saved.setProductCode("SP" + String.format("%05d", saved.getId()));
+        } else {
+            saved.setProductCode(code);
+        }
+        saved = productRepository.save(saved);
 
         return toProductResponse(saved);
     }
@@ -58,6 +74,14 @@ public class ProductService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("Product not found with id: " + id)
                 );
+
+        String code = request.getProductCode();
+        if (code != null && !code.isBlank()) {
+            if (productRepository.existsByProductCodeAndIdNot(code, id)) {
+                throw new IllegalArgumentException("Mã sản phẩm '" + code + "' đã tồn tại");
+            }
+            product.setProductCode(code);
+        }
 
         product.setProductName(request.getProductName());
         product.setProductCategory(request.getProductCategory());
@@ -119,11 +143,13 @@ public class ProductService {
     
     private ProductResponse toProductResponse(Product product) {
         ProductResponse response = new ProductResponse(product);
-        
+
         // Load primary image if exists
-        imageRepository.findByProduct_IdAndIsPrimaryTrue(product.getId())
-                .ifPresent(image -> response.setImageUrl(image.getImageUrl()));
-        
+        List<Image> primaryImages = imageRepository.findByProduct_IdAndIsPrimaryTrue(product.getId());
+        if (!primaryImages.isEmpty()) {
+            response.setImageUrl(primaryImages.get(0).getImageUrl());
+        }
+
         return response;
     }
 }

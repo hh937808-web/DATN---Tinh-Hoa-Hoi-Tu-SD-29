@@ -7,4 +7,8 @@ import java.util.List;
 
 public interface ProductComboRepository extends JpaRepository<ProductCombo, Integer> {
     List<ProductCombo> findByIsActiveTrue();
+
+    boolean existsByComboCode(String comboCode);
+
+    boolean existsByComboCodeAndIdNot(String comboCode, Integer id);
 }

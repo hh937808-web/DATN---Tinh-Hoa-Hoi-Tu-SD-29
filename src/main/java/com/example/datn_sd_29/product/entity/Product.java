@@ -43,5 +43,8 @@ public class Product {
     @Column(name = "stock_quantity")
     private Integer stockQuantity;
 
+    @Size(max = 50)
+    @Column(name = "product_code", length = 50, unique = true)
+    private String productCode;
 
 }

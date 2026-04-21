@@ -21,6 +21,9 @@ public class ProductComboRequest {
     @NotNull(message = "Trạng thái isActive không được để trống")
     private Boolean isActive;
 
+    @Size(max = 50, message = "Mã combo tối đa 50 ký tự")
+    private String comboCode;
+
     public String getComboName() {
         return comboName;
     }
@@ -51,5 +54,13 @@ public class ProductComboRequest {
 
     public void setIsActive(Boolean isActive) {
         this.isActive = isActive;
+    }
+
+    public String getComboCode() {
+        return comboCode;
+    }
+
+    public void setComboCode(String comboCode) {
+        this.comboCode = comboCode;
     }
 }

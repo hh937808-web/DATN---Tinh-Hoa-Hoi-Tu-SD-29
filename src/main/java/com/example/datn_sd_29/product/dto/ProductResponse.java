@@ -16,6 +16,7 @@ public class ProductResponse {
     private ProductStatus availabilityStatus;
     private Integer stockQuantity;
     private String imageUrl;
+    private String productCode;
 
     public ProductResponse() {
     }
@@ -28,6 +29,7 @@ public class ProductResponse {
         this.description = product.getDescription();
         this.availabilityStatus = product.getAvailabilityStatus();
         this.stockQuantity = product.getStockQuantity();
+        this.productCode = product.getProductCode();
     }
 
     public Integer getId() {
@@ -92,5 +94,13 @@ public class ProductResponse {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public String getProductCode() {
+        return productCode;
+    }
+
+    public void setProductCode(String productCode) {
+        this.productCode = productCode;
     }
 }

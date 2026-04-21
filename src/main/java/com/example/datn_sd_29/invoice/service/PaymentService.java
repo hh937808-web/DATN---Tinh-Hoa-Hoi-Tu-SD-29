@@ -163,10 +163,12 @@ public class PaymentService {
             i.setStatus(item.getStatus() != null ? item.getStatus().name() : null); // Set status
             if (item.getProduct() != null) {
                 i.setName(item.getProduct().getProductName());
+                i.setCode(item.getProduct().getProductCode());
                 i.setType("PRODUCT");
                 i.setProductId(item.getProduct().getId());
             } else if (item.getProductCombo() != null) {
                 i.setName(item.getProductCombo().getComboName());
+                i.setCode(item.getProductCombo().getComboCode());
                 i.setType("COMBO");
                 i.setComboId(item.getProductCombo().getId());
             } else {
@@ -354,10 +356,12 @@ public class PaymentService {
                 i.setStatus(item.getStatus() != null ? item.getStatus().name() : null); // Set status
                 if (item.getProduct() != null) {
                     i.setName(item.getProduct().getProductName());
+                    i.setCode(item.getProduct().getProductCode());
                     i.setType("PRODUCT");
                     i.setProductId(item.getProduct().getId());
                 } else if (item.getProductCombo() != null) {
                     i.setName(item.getProductCombo().getComboName());
+                    i.setCode(item.getProductCombo().getComboCode());
                     i.setType("COMBO");
                     i.setComboId(item.getProductCombo().getId());
                 } else {

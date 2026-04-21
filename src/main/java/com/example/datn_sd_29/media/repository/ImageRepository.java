@@ -14,13 +14,13 @@ public interface ImageRepository extends JpaRepository<Image, Integer> {
     List<Image> findByProduct_IdOrderByIsPrimaryDesc(Integer productId);
 
 
-    Optional<Image> findByProduct_IdAndIsPrimaryTrue(Integer productId);
+    List<Image> findByProduct_IdAndIsPrimaryTrue(Integer productId);
 
 
 
     List<Image> findByProductCombo_IdOrderByIsPrimaryDesc(Integer comboId);
 
 
-    Optional<Image> findByProductCombo_IdAndIsPrimaryTrue(Integer comboId);
+    List<Image> findByProductCombo_IdAndIsPrimaryTrue(Integer comboId);
 
 }
