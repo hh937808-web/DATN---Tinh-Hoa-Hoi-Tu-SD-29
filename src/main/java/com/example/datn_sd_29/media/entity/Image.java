@@ -1,5 +1,6 @@
 package com.example.datn_sd_29.media.entity;
 
+import com.example.datn_sd_29.blog.entity.BlogPost;
 import com.example.datn_sd_29.product.entity.Product;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
 import jakarta.persistence.Column;
@@ -30,6 +31,10 @@ public class Image {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_combo_id")
     private ProductCombo productCombo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "blog_post_id")
+    private BlogPost blogPost;
 
     @Lob
     @Column(name = "image_url")

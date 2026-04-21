@@ -104,4 +104,36 @@ public class ImageController {
             );
         }
     }
+
+    // ===== BLOG POST IMAGES =====
+
+    @GetMapping("/blog/{blogPostId}")
+    public ResponseEntity<ApiResponse<List<ImageResponse>>> getBlogPostImages(
+            @PathVariable Integer blogPostId
+    ) {
+        List<ImageResponse> images = imageService.getBlogPostImages(blogPostId);
+        return ResponseEntity.ok(ApiResponse.success("Get blog images successfully", images));
+    }
+
+    @PostMapping("/blog/{blogPostId}")
+    public ResponseEntity<ApiResponse<ImageResponse>> uploadBlogPostImage(
+            @PathVariable Integer blogPostId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "isPrimary", defaultValue = "false") boolean isPrimary
+    ) {
+        try {
+            ImageResponse image = imageService.uploadBlogPostImage(blogPostId, file, isPrimary);
+            return ResponseEntity.ok(ApiResponse.success("Upload blog image successfully", image));
+        } catch (IOException e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Failed to upload image: " + e.getMessage(), null)
+            );
+        }
+    }
+
+    @DeleteMapping("/blog/{blogPostId}")
+    public ResponseEntity<ApiResponse<Void>> deleteBlogPostImages(@PathVariable Integer blogPostId) {
+        imageService.deleteBlogPostImages(blogPostId);
+        return ResponseEntity.ok(ApiResponse.success("Deleted blog images", null));
+    }
 }

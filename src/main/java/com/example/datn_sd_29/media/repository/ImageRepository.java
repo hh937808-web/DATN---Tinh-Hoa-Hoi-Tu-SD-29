@@ -23,4 +23,7 @@ public interface ImageRepository extends JpaRepository<Image, Integer> {
 
     List<Image> findByProductCombo_IdAndIsPrimaryTrue(Integer comboId);
 
+    List<Image> findByBlogPost_IdOrderByIsPrimaryDesc(Integer blogPostId);
+
+    List<Image> findByBlogPost_IdAndIsPrimaryTrue(Integer blogPostId);
 }

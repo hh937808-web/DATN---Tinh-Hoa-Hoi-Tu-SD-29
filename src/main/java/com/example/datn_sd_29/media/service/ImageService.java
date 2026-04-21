@@ -3,6 +3,8 @@ package com.example.datn_sd_29.media.service;
 import com.example.datn_sd_29.media.dto.ImageResponse;
 import com.example.datn_sd_29.media.entity.Image;
 import com.example.datn_sd_29.media.repository.ImageRepository;
+import com.example.datn_sd_29.blog.entity.BlogPost;
+import com.example.datn_sd_29.blog.repository.BlogPostRepository;
 import com.example.datn_sd_29.product.entity.Product;
 import com.example.datn_sd_29.product.repository.ProductRepository;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
@@ -22,6 +24,7 @@ public class ImageService {
     private final ImageRepository imageRepository;
     private final ProductComboRepository productComboRepository;
     private final ProductRepository productRepository;
+    private final BlogPostRepository blogPostRepository;
 
 
     public List<ImageResponse> getProductImages(Integer productId) {
@@ -119,5 +122,42 @@ public class ImageService {
         Image savedImage = imageRepository.save(image);
 
         return new ImageResponse(savedImage);
+    }
+
+    // ===== BLOG POST IMAGES =====
+
+    public List<ImageResponse> getBlogPostImages(Integer blogPostId) {
+        return imageRepository.findByBlogPost_IdOrderByIsPrimaryDesc(blogPostId)
+                .stream()
+                .map(ImageResponse::new)
+                .toList();
+    }
+
+    public ImageResponse uploadBlogPostImage(Integer blogPostId, MultipartFile file, boolean isPrimary) throws IOException {
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
+                .orElseThrow(() -> new RuntimeException("Blog post not found with id: " + blogPostId));
+
+        if (isPrimary) {
+            List<Image> existingImages = imageRepository.findByBlogPost_IdOrderByIsPrimaryDesc(blogPostId);
+            existingImages.forEach(img -> img.setIsPrimary(false));
+            imageRepository.saveAll(existingImages);
+        }
+
+        byte[] fileBytes = file.getBytes();
+        String base64Image = Base64.getEncoder().encodeToString(fileBytes);
+        String contentType = file.getContentType();
+        String dataUrl = "data:" + contentType + ";base64," + base64Image;
+
+        Image image = new Image();
+        image.setBlogPost(blogPost);
+        image.setImageUrl(dataUrl);
+        image.setIsPrimary(isPrimary);
+
+        return new ImageResponse(imageRepository.save(image));
+    }
+
+    public void deleteBlogPostImages(Integer blogPostId) {
+        List<Image> images = imageRepository.findByBlogPost_IdOrderByIsPrimaryDesc(blogPostId);
+        imageRepository.deleteAll(images);
     }
 }
