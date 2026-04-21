@@ -26,9 +26,6 @@ public class ReservationRequest {
 
     private String foodNote;
 
-    @NotBlank(message = "Promotion type is required")
-    private String promotionType;
-
     private String guestName;   // Tên người thực sự đến ăn (optional)
     private String guestPhone;  // SĐT người thực sự đến ăn (optional)
 

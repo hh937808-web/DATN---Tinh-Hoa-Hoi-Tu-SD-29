@@ -42,6 +42,8 @@ public class InvoiceService {
                     res.setFinalAmount(i.getFinalAmount());
                     res.setReservedAt(i.getReservedAt());
                     res.setGuestCount(i.getGuestCount());
+                    res.setEarnedPoints(i.getEarnedPoints());
+                    res.setUsedPoints(i.getUsedPoints());
                     return res;
                 })
                 .toList();

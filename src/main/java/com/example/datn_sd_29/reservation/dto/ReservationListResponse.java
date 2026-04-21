@@ -18,7 +18,6 @@ public class ReservationListResponse {
     private String guestName;      // Tên người được đặt hộ
     private String guestPhone;     // SĐT người được đặt hộ
     private String invoiceStatus;
-    private String promotionType;
     private String note;
     private String foodNote;
     private List<TableInfo> tables;

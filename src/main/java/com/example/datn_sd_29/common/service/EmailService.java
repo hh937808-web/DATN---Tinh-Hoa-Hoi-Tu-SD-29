@@ -55,7 +55,6 @@ public class EmailService {
             String reservationCode,
             LocalDateTime reservedAt,
             Integer guestCount,
-            String promotionType,
             String note,
             List<String> tableCodes
     ) {
@@ -72,7 +71,6 @@ public class EmailService {
                 "Mã bàn đặt: " + reservationCode + "\n" +
                         "Thời gian đến: " + timeText + "\n" +
                         "Số khách: " + guestCount + "\n" +
-                        "Ưu đãi: " + (promotionType == null ? "" : promotionType) + "\n" +
                         "Ghi chú: " + (note == null ? "" : note) + "\n" +
                         "Bàn: " + tablesText
         );

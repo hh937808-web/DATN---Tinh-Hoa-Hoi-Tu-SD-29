@@ -60,11 +60,6 @@ public class ReservationService {
     private static final int CHECK_IN_LATE_BUFFER_MINUTES = 30;
     private static final int MAX_TABLES_TO_COMBINE = 5;
     private static final Set<String> ACTIVE_STATUSES = Set.of("RESERVED", "CONFIRMED", "IN_PROGRESS");
-    private static final Set<String> PROMOTION_OPTIONS = Set.of(
-            "Ưu đãi sinh nhật 10% tổng hóa đơn",
-            "Có mã ưu đãi riêng",
-            "Đầy tiền không cần ưu đãi"
-    );
     
     // Area-based scoring constants
     private static final int SINGLE_AREA_COMPLETE_BONUS = 10000;
@@ -143,10 +138,6 @@ public class ReservationService {
         customer.setPhoneNumber(request.getPhoneNumber());
         customerRepository.save(customer);
 
-        if (!PROMOTION_OPTIONS.contains(request.getPromotionType())) {
-            throw new IllegalArgumentException("Promotion type is invalid");
-        }
-
         LocalDateTime reservedAt = request.getReservedAt();
         if (reservedAt == null || reservedAt.isBefore(LocalDateTime.now())) {
             throw new IllegalArgumentException("Reserved time is invalid");
@@ -172,7 +163,6 @@ public class ReservationService {
         invoice.setInvoiceCode("INV-" + UUID.randomUUID());
         invoice.setReservedAt(reservedAt);
         invoice.setGuestCount(guestCount);
-        invoice.setPromotionType(request.getPromotionType());
         invoice.setFoodNote(request.getFoodNote());
 
         // Thêm guest info cho đặt bàn hộ
@@ -326,7 +316,6 @@ public class ReservationService {
                 invoice.getReservationCode(),
                 invoice.getReservedAt(),
                 invoice.getGuestCount(),
-                invoice.getPromotionType(),
                 invoice.getReservationNote(),
                 List.of() // Empty list - no table codes for customer
         );
@@ -369,7 +358,6 @@ public class ReservationService {
                             invoice.getGuestName(),
                             invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
-                            invoice.getPromotionType(),
                             invoice.getReservationNote(),
                             invoice.getFoodNote(),
                             tables
@@ -441,7 +429,6 @@ public class ReservationService {
                             invoice.getGuestName(),
                             invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
-                            invoice.getPromotionType(),
                             invoice.getReservationNote(),
                             invoice.getFoodNote(),
                             tables
@@ -466,7 +453,6 @@ public class ReservationService {
                             invoice.getGuestName(),
                             invoice.getGuestPhone(),
                             invoice.getInvoiceStatus(),
-                            invoice.getPromotionType(),
                             invoice.getReservationNote(),
                             invoice.getFoodNote(),
                             List.of() // No tables assigned yet
@@ -566,7 +552,6 @@ public class ReservationService {
                 fullName,
                 phoneNumber,
                 invoice.getInvoiceStatus(),
-                invoice.getPromotionType(),
                 invoice.getReservationNote(),
                 invoice.getFoodNote(),
                 tables

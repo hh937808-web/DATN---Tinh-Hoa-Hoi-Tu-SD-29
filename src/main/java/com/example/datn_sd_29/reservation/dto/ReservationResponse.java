@@ -15,7 +15,6 @@ public class ReservationResponse {
     private String fullName;
     private String phoneNumber;
     private String invoiceStatus;
-    private String promotionType;
     private String note;
     private String foodNote;
     private List<TableInfo> tables;
