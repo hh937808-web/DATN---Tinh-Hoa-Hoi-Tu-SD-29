@@ -40,4 +40,7 @@ public class PersonalVoucher {
     @Column(name = "min_order_amount", precision = 18, scale = 2)
     private BigDecimal minOrderAmount;
 
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive;
+
 }

@@ -12,6 +12,7 @@ public class PersonalVoucherResponse {
     private Integer discountPercent;
     private String voucherType;
     private BigDecimal minOrderAmount;
+    private Boolean isActive;
 
     public PersonalVoucherResponse(PersonalVoucher voucher) {
         this.id = voucher.getId();
@@ -20,6 +21,11 @@ public class PersonalVoucherResponse {
         this.discountPercent = voucher.getDiscountPercent();
         this.voucherType = voucher.getVoucherType();
         this.minOrderAmount = voucher.getMinOrderAmount();
+        this.isActive = voucher.getIsActive();
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
     }
 
     public Integer getId() {
