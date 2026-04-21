@@ -12,6 +12,7 @@ import com.example.datn_sd_29.invoice.dto.PaymentDetailResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentItemResponse;
 import com.example.datn_sd_29.invoice.dto.PaymentVoucherResponse;
 import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.enums.ProductCategory;
 import com.example.datn_sd_29.product.repository.ProductRepository;
 import com.example.datn_sd_29.product_combo.entity.ProductCombo;
 import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
@@ -84,10 +85,13 @@ public class PaymentService {
     @Value("${security.api.enabled:true}")
     private boolean securityEnabled;
 
-    @Value("${payment.vat.percent:10}")
-    private BigDecimal vatPercent;
-    
-    @Value("${payment.service-fee.percent:5}")
+    @Value("${payment.vat.percent:8}")
+    private BigDecimal vatPercent;          // food VAT (8%)
+
+    @Value("${payment.vat.drink-percent:10}")
+    private BigDecimal drinkVatPercent;     // drink VAT (10%)
+
+    @Value("${payment.service-fee.percent:0}")
     private BigDecimal serviceFeePercent;
     
     @Value("${payment.points.max-usage-percent:40}")
@@ -233,14 +237,50 @@ public class PaymentService {
         }
         baseAfterVoucher = baseAfterVoucher.max(BigDecimal.ZERO);
         
-        // Calculate tax on baseAfterVoucher (points = 0 initially)
-        BigDecimal taxAmount = baseAfterVoucher.multiply(vatPercent)
+        // Dual VAT: food items 8%, drink items 10% — after item-level voucher discounts
+        BigDecimal foodSubtotal = items.stream()
+                .filter(item -> item.getProduct() == null ||
+                        !ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal itemDiscount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount()
+                            : BigDecimal.ZERO;
+                    return lineTotal.subtract(itemDiscount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal drinkSubtotal = items.stream()
+                .filter(item -> item.getProduct() != null &&
+                        ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal drinkDiscount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount()
+                            : BigDecimal.ZERO;
+                    return lineTotal.subtract(drinkDiscount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal foodVat = foodSubtotal.multiply(vatPercent)
                 .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        BigDecimal drinkVat = drinkSubtotal.multiply(drinkVatPercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        BigDecimal taxAmount = foodVat.add(drinkVat);
         BigDecimal serviceFeeAmount = baseAfterVoucher.multiply(serviceFeePercent)
                 .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-        
-        BigDecimal totalPayable = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
-        response.setTotalPayable(totalPayable);
+
+        BigDecimal totalPayableBeforePoints = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
+        // Max points = maxPointsUsagePercent% of total bill (including VAT) — points cannot make bill free
+        int maxPointsAllowed = totalPayableBeforePoints
+                .multiply(maxPointsUsagePercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR)
+                .divide(POINT_VALUE, 0, RoundingMode.FLOOR)
+                .intValue();
+
+        response.setFoodSubtotal(foodSubtotal);
+        response.setDrinkSubtotal(drinkSubtotal);
+        response.setDrinkVatPercent(drinkVatPercent);
+        response.setTotalPayable(totalPayableBeforePoints);
+        response.setMaxPointsAllowed(maxPointsAllowed);
 
         response.setVouchers(loadAvailableVouchers(customer));
         return response;
@@ -387,13 +427,41 @@ public class PaymentService {
             }
             baseAfterVoucher = baseAfterVoucher.max(BigDecimal.ZERO);
             
-            // Calculate tax on baseAfterVoucher (points = 0 initially)
-            BigDecimal taxAmount = baseAfterVoucher.multiply(vatPercent)
+            // Dual VAT: food items 8%, drink items 10% — after item-level voucher discounts
+            BigDecimal foodSubtotal = items.stream()
+                    .filter(item -> item.getProduct() == null ||
+                            !ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                    .map(item -> {
+                        BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                        BigDecimal itemDiscount = item.getAppliedVoucherDiscount() != null
+                                ? item.getAppliedVoucherDiscount()
+                                : BigDecimal.ZERO;
+                        return lineTotal.subtract(itemDiscount).max(BigDecimal.ZERO);
+                    })
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal drinkSubtotal = items.stream()
+                    .filter(item -> item.getProduct() != null &&
+                            ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                    .map(item -> {
+                        BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                        BigDecimal drinkDiscount = item.getAppliedVoucherDiscount() != null
+                                ? item.getAppliedVoucherDiscount()
+                                : BigDecimal.ZERO;
+                        return lineTotal.subtract(drinkDiscount).max(BigDecimal.ZERO);
+                    })
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal foodVat = foodSubtotal.multiply(vatPercent)
                     .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+            BigDecimal drinkVat = drinkSubtotal.multiply(drinkVatPercent)
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+            BigDecimal taxAmount = foodVat.add(drinkVat);
             BigDecimal serviceFeeAmount = baseAfterVoucher.multiply(serviceFeePercent)
                     .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-            
+
             BigDecimal totalPayable = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
+            response.setFoodSubtotal(foodSubtotal);
+            response.setDrinkSubtotal(drinkSubtotal);
+            response.setDrinkVatPercent(drinkVatPercent);
             response.setTotalPayable(totalPayable);
             
             response.setVouchers(loadAvailableVouchers(customer));
@@ -639,36 +707,47 @@ public class PaymentService {
             baseAfterVoucher = BigDecimal.ZERO;
         }
 
-        // RULE: Limit points usage to max percentage of invoice (30-50%)
         int usePoints = request.getUsePoints() == null ? 0 : request.getUsePoints();
         int customerPoints = customer == null || customer.getLoyaltyPoints() == null
                 ? 0
                 : customer.getLoyaltyPoints();
-        
+
         if (usePoints > customerPoints) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Not enough points. Customer has " + customerPoints + " points");
-        }
-        
-        // Calculate max points allowed based on invoice amount
-        BigDecimal maxPointsValue = baseAfterVoucher
-                .multiply(maxPointsUsagePercent)
-                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-        int maxPointsAllowed = maxPointsValue.divide(POINT_VALUE, 0, RoundingMode.FLOOR).intValue();
-        
-        if (usePoints > maxPointsAllowed) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Points usage exceeds limit. Maximum " + maxPointsAllowed + " points (" + 
-                maxPointsUsagePercent.intValue() + "% of invoice) can be used");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Không đủ điểm. Khách có " + customerPoints + " điểm");
         }
 
-        // CRITICAL FIX: Calculate VAT and service fee on baseAfterVoucher (BEFORE points deduction)
-        // Points are a payment method, not a discount, so tax should be calculated before points
+        // Dual VAT: food items 8%, drink items 10% — after item-level voucher discounts
+        BigDecimal foodSubtotal = items.stream()
+                .filter(item -> item.getProduct() == null ||
+                        !ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal itemDiscount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount()
+                            : BigDecimal.ZERO;
+                    return lineTotal.subtract(itemDiscount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal drinkSubtotal = items.stream()
+                .filter(item -> item.getProduct() != null &&
+                        ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal drinkDiscount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount()
+                            : BigDecimal.ZERO;
+                    return lineTotal.subtract(drinkDiscount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal taxAmount = BigDecimal.ZERO;
-        if (vatPercent.compareTo(BigDecimal.ZERO) > 0) {
-            taxAmount = baseAfterVoucher.multiply(vatPercent)
-                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
-        }
+        BigDecimal foodVat = vatPercent.compareTo(BigDecimal.ZERO) > 0
+                ? foodSubtotal.multiply(vatPercent).divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR)
+                : BigDecimal.ZERO;
+        BigDecimal drinkVat = drinkVatPercent.compareTo(BigDecimal.ZERO) > 0
+                ? drinkSubtotal.multiply(drinkVatPercent).divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR)
+                : BigDecimal.ZERO;
+        taxAmount = foodVat.add(drinkVat);
 
         BigDecimal serviceFeeAmount = BigDecimal.ZERO;
         if (serviceFeePercent.compareTo(BigDecimal.ZERO) > 0) {
@@ -679,7 +758,19 @@ public class PaymentService {
         // Calculate totalPayable BEFORE points deduction
         BigDecimal totalPayableBeforePoints = baseAfterVoucher.add(taxAmount).add(serviceFeeAmount);
 
-        // Now apply points discount (points reduce the amount customer needs to pay)
+        // Validate points: cap is maxPointsUsagePercent% of total bill (including VAT)
+        // Points cannot make the bill free — customer must always pay at least (100-maxPercent)%
+        BigDecimal maxPointsValue = totalPayableBeforePoints
+                .multiply(maxPointsUsagePercent)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        int maxPointsAllowed = maxPointsValue.divide(POINT_VALUE, 0, RoundingMode.FLOOR).intValue();
+
+        if (usePoints > maxPointsAllowed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Số điểm vượt quá giới hạn. Tối đa " + maxPointsAllowed + " điểm (" +
+                maxPointsUsagePercent.intValue() + "% hóa đơn) cho phép sử dụng");
+        }
+
         BigDecimal pointsDiscount = POINT_VALUE.multiply(BigDecimal.valueOf(usePoints));
         if (pointsDiscount.compareTo(totalPayableBeforePoints) > 0) {
             pointsDiscount = totalPayableBeforePoints.max(BigDecimal.ZERO);

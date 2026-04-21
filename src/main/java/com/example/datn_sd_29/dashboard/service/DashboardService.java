@@ -16,7 +16,9 @@ import com.example.datn_sd_29.invoice.repository.InvoiceDiningTableRepository;
 import com.example.datn_sd_29.invoice.repository.InvoiceVoucherRepository;
 import com.example.datn_sd_29.customer.repository.CustomerRepository;
 import com.example.datn_sd_29.dining_table.repository.DiningTableRepository;
+import com.example.datn_sd_29.product.enums.ProductCategory;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -36,6 +38,12 @@ public class DashboardService {
     private final InvoiceVoucherRepository invoiceVoucherRepository;
     private final CustomerRepository customerRepository;
     private final DiningTableRepository diningTableRepository;
+
+    @Value("${payment.vat.percent:8}")
+    private BigDecimal foodVatPercent;
+
+    @Value("${payment.vat.drink-percent:10}")
+    private BigDecimal drinkVatPercent;
 
     public DashboardStatsResponse getStats(LocalDate startDate, LocalDate endDate) {
         ZoneId zoneId = ZoneId.systemDefault();
@@ -937,7 +945,34 @@ public class DashboardService {
             })
             .collect(Collectors.toList());
         response.setVouchers(voucherResponses);
-        
+
+        // Calculate foodSubtotal and drinkSubtotal from items (after their item-level discounts)
+        BigDecimal foodSubtotal = items.stream()
+                .filter(item -> item.getProduct() == null ||
+                        !ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal discount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO;
+                    return lineTotal.subtract(discount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal drinkSubtotal = items.stream()
+                .filter(item -> item.getProduct() != null &&
+                        ProductCategory.DRINK.equals(item.getProduct().getProductCategory()))
+                .map(item -> {
+                    BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal discount = item.getAppliedVoucherDiscount() != null
+                            ? item.getAppliedVoucherDiscount() : BigDecimal.ZERO;
+                    return lineTotal.subtract(discount).max(BigDecimal.ZERO);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        response.setFoodSubtotal(foodSubtotal);
+        response.setDrinkSubtotal(drinkSubtotal);
+        // Use stored taxPercent as food VAT rate; drink VAT always 10%
+        response.setVatPercent(invoice.getTaxPercent() != null ? invoice.getTaxPercent() : foodVatPercent);
+        response.setDrinkVatPercent(drinkVatPercent);
+
         return response;
     }
 }

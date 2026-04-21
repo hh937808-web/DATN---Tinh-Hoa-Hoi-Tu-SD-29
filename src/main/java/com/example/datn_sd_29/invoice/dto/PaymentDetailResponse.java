@@ -32,10 +32,14 @@ public class PaymentDetailResponse {
     private List<PaymentVoucherResponse> vouchers;
 
     private BigDecimal subtotal;
+    private BigDecimal foodSubtotal;    // subtotal of non-drink items (VAT 8% base)
+    private BigDecimal drinkSubtotal;   // subtotal of DRINK items (VAT 10% base)
     private BigDecimal itemVoucherDiscount;
-    private BigDecimal vatPercent;
+    private BigDecimal vatPercent;       // food VAT rate (8%)
+    private BigDecimal drinkVatPercent;  // drink VAT rate (10%)
     private BigDecimal serviceFeePercent;
     private Integer pointValue;
+    private Integer maxPointsAllowed;  // giới hạn điểm được dùng cho hóa đơn này
     
     // Auto-applied invoice voucher info
     private Integer autoAppliedVoucherId;
