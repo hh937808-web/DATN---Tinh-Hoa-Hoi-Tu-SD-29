@@ -269,6 +269,7 @@ public class StaffOrderService {
                 .tables(tableInfos)
                 .servingStaffId(invoice.getServingStaff() != null ? invoice.getServingStaff().getId() : null)
                 .servingStaffName(invoice.getServingStaff() != null ? invoice.getServingStaff().getFullName() : null)
+                .foodNote(invoice.getFoodNote())
                 .build();
     }
 

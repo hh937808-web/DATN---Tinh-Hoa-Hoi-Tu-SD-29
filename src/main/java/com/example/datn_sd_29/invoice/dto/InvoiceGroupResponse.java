@@ -23,6 +23,7 @@ public class InvoiceGroupResponse {
     private List<TableInfo> tables;
     private Integer servingStaffId;
     private String servingStaffName;
+    private String foodNote;
 
     @Data
     @Builder

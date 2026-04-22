@@ -48,6 +48,7 @@ public class ReservationService {
     private final EmployeeRepository employeeRepository;
     private final EmailService emailService;
     private final TableStatusBroadcastService tableStatusBroadcastService;
+    private final org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
     
     @org.springframework.beans.factory.annotation.Value("${security.api.enabled:true}")
     private boolean securityEnabled;
@@ -396,6 +397,30 @@ public class ReservationService {
             log.info("Released {} tables for cancelled reservation {}", tableIds.size(), invoice.getReservationCode());
         } else {
             log.info("Cancelled pending reservation {} (no tables assigned)", invoice.getReservationCode());
+        }
+
+        // Broadcast thông báo hủy đơn cho lễ tân
+        try {
+            Customer customer = invoice.getCustomer();
+            String tableNames = links.stream()
+                    .map(l -> l.getDiningTable().getTableName())
+                    .collect(Collectors.joining(", "));
+
+            java.util.Map<String, Object> notification = new java.util.HashMap<>();
+            notification.put("reservationCode", invoice.getReservationCode());
+            notification.put("customerName", customer != null ? customer.getFullName() : "");
+            notification.put("phoneNumber", customer != null ? customer.getPhoneNumber() : "");
+            notification.put("reservedAt", invoice.getReservedAt() != null ? invoice.getReservedAt().toString() : "");
+            notification.put("tableNames", tableNames.isEmpty() ? "Chưa xếp bàn" : tableNames);
+            notification.put("guestCount", invoice.getGuestCount());
+            notification.put("detectedAt", java.time.Instant.now().toString());
+            notification.put("notificationType", "CUSTOMER_CANCELLED");
+            notification.put("message", "Khách hàng đã tự hủy đơn đặt bàn");
+
+            messagingTemplate.convertAndSend("/topic/noshow", notification);
+            log.info("Sent cancel notification for reservation {}", invoice.getReservationCode());
+        } catch (Exception e) {
+            log.warn("Failed to send cancel notification: {}", e.getMessage());
         }
     }
 
