@@ -59,4 +59,10 @@ public class BlogPost {
 
     @Column(name = "published_at")
     private Instant publishedAt;
+
+    @Column(name = "scheduled_publish_at")
+    private Instant scheduledPublishAt;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
 }

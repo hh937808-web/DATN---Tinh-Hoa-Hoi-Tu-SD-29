@@ -19,7 +19,8 @@ public class BlogAIService {
     @Value("${openai.model:gpt-4o-mini}")
     private String model;
 
-    private static final String OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+    @Value("${openai.base-url:https://api.openai.com/v1/chat/completions}")
+    private String apiUrl;
 
     /**
      * Stream bài viết từ OpenAI, ghi trực tiếp từng chunk SSE vào OutputStream của response.
@@ -44,17 +45,35 @@ public class BlogAIService {
             }
             """.formatted(model, sysEscaped, userEscaped);
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(OPENAI_URL).openConnection();
+        if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("${")) {
+            log.error("OPENAI_API_KEY chưa được cấu hình trong .env");
+            writeSseError(outputStream, "OPENAI_API_KEY chưa cấu hình");
+            return;
+        }
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         conn.setDoOutput(true);
+        conn.setConnectTimeout(15_000);
+        conn.setReadTimeout(60_000);
 
         try (OutputStream os = conn.getOutputStream()) {
             os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
         }
 
+        int status = conn.getResponseCode();
         Writer writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8);
+
+        // OpenAI trả lỗi (401 key sai, 429 hết quota, 400 model sai, 5xx server...) → đọc errorStream
+        if (status < 200 || status >= 300) {
+            String errBody = readAll(conn.getErrorStream());
+            log.error("OpenAI API lỗi HTTP {}: {}", status, errBody);
+            writeSseError(outputStream, "OpenAI " + status + ": " + shortError(errBody));
+            conn.disconnect();
+            return;
+        }
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
@@ -66,19 +85,54 @@ public class BlogAIService {
 
                 String content = extractDeltaContent(data);
                 if (content != null && !content.isEmpty()) {
-                    // Ghi SSE event thẳng ra response: data:nội dung\n\n
                     writer.write("data:" + content.replace("\n", "\\n") + "\n\n");
                     writer.flush();
                 }
             }
+        } catch (IOException e) {
+            log.error("Lỗi khi đọc SSE từ OpenAI", e);
+            writeSseError(outputStream, "Lỗi đọc stream: " + e.getMessage());
+            conn.disconnect();
+            return;
         }
 
-        // Signal done
         writer.write("data:[DONE]\n\n");
         writer.flush();
         conn.disconnect();
 
         log.info("AI stream hoàn tất cho tiêu đề: {}", title);
+    }
+
+    private void writeSseError(OutputStream os, String message) throws IOException {
+        Writer w = new OutputStreamWriter(os, StandardCharsets.UTF_8);
+        // Gửi event error để frontend nhận ra
+        w.write("event:error\n");
+        w.write("data:" + message.replace("\n", " ") + "\n\n");
+        w.write("data:[DONE]\n\n");
+        w.flush();
+    }
+
+    private String readAll(InputStream in) {
+        if (in == null) return "";
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String l;
+            while ((l = r.readLine()) != null) sb.append(l).append('\n');
+            return sb.toString();
+        } catch (IOException e) {
+            return "<không đọc được error body: " + e.getMessage() + ">";
+        }
+    }
+
+    private String shortError(String body) {
+        if (body == null || body.isEmpty()) return "no body";
+        // Tìm "message": trong JSON lỗi của OpenAI
+        int idx = body.indexOf("\"message\"");
+        if (idx == -1) return body.length() > 200 ? body.substring(0, 200) : body;
+        int start = body.indexOf('"', idx + 9);
+        int end = start == -1 ? -1 : body.indexOf('"', start + 1);
+        if (start == -1 || end == -1) return body.substring(0, Math.min(200, body.length()));
+        return body.substring(start + 1, end);
     }
 
     private String extractDeltaContent(String json) {

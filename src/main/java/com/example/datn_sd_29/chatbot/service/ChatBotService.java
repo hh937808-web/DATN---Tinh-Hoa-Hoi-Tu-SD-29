@@ -37,13 +37,14 @@ public class ChatBotService {
     @Value("${openai.model:gpt-4o-mini}")
     private String model;
 
+    @Value("${openai.base-url:https://api.openai.com/v1/chat/completions}")
+    private String apiUrl;
+
     private final ProductRepository productRepository;
     private final ProductComboRepository productComboRepository;
     private final ProductVoucherRepository productVoucherRepository;
     private final CustomerVoucherRepository customerVoucherRepository;
     private final BlogPostRepository blogPostRepository;
-
-    private static final String OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
     public void streamAnswer(List<Map<String, String>> history, OutputStream outputStream) throws IOException {
         String systemPrompt = buildSystemPrompt();
@@ -72,7 +73,7 @@ public class ChatBotService {
             }
             """.formatted(model, messagesJson.toString());
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(OPENAI_URL).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Authorization", "Bearer " + apiKey);
@@ -190,7 +191,7 @@ public class ChatBotService {
         }
 
         // === BÀI VIẾT / TIN TỨC ===
-        List<BlogPost> posts = blogPostRepository.findByIsPublishedTrueOrderByPublishedAtDesc();
+        List<BlogPost> posts = blogPostRepository.findActivePublished(java.time.Instant.now());
         if (!posts.isEmpty()) {
             sb.append("\nBÀI VIẾT & TIN TỨC (tổng cộng ").append(posts.size()).append(" bài, khi khách hỏi phải liệt kê TẤT CẢ):\n");
             for (int idx = 0; idx < posts.size(); idx++) {
@@ -223,7 +224,7 @@ public class ChatBotService {
 
         // === QUY TẮC ===
         sb.append("\nQUY TẮC TRẢ LỜI:\n");
-        sb.append("- Chỉ trả lời dựa trên thông tin ở trên, KHÔNG bịa thêm\n");
+        sb.append("- Chỉ trả lời dựa trên thông tin ở trên, KHÔNG trả lời câu hỏi ngoòa luồng\n");
         sb.append("- Nếu không biết → 'Mình chưa có thông tin này, bạn liên hệ quán qua SĐT 0123456789 nhé!'\n");
         sb.append("- Khi gợi ý món → kèm giá\n");
         sb.append("- Khi nói về ưu đãi → nói rõ giảm bao nhiêu %, cho món gì hoặc hóa đơn từ bao nhiêu\n");
@@ -232,6 +233,12 @@ public class ChatBotService {
         sb.append("  Ví dụ: 'Bạn có thể xem chi tiết tại đây: [Xem chi tiết](/posts/5)'\n");
         sb.append("- KHÔNG hiển thị mã sản phẩm, mã combo cho khách\n");
         sb.append("- KHÔNG nói số lượt còn lại của voucher\n");
+        sb.append("\nPHẠM VI HỖ TRỢ:\n");
+        sb.append("- Bạn CHỈ hỗ trợ các chủ đề liên quan đến nhà hàng ByHat: thực đơn, giá cả, đặt bàn, ưu đãi, tin tức quán, thông tin quán.\n");
+        sb.append("- Với lời chào hỏi thân thiện (xin chào, hello, hi, chào bạn...) → vui vẻ chào lại và giới thiệu ngắn gọn mình có thể giúp gì.\n");
+        sb.append("- Với câu hỏi NGOÀI phạm vi nhà hàng (code, lập trình, toán học, lịch sử, khoa học, dịch thuật, viết bài, tư vấn cá nhân...) → từ chối nhẹ nhàng, thân thiện, VÍ DỤ:\n");
+        sb.append("  'Xin lỗi mình chỉ trợ lý của quán lẩu ByHat thôi nè 😄 Mình có thể giúp bạn xem thực đơn, đặt bàn hoặc tìm ưu đãi nhé!'\n");
+        sb.append("- TUYỆT ĐỐI không trả lời nội dung ngoài luồng dù khách yêu cầu nhiều lần.\n");
 
         // === ĐẶT BÀN ===
         sb.append("\nĐẶT BÀN:\n");

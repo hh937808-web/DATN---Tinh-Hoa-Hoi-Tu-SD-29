@@ -18,6 +18,9 @@ public class BlogPostResponse {
     private Boolean isPublished;
     private Integer viewCount;
 
+    // Trạng thái tổng hợp: DRAFT | SCHEDULED | PUBLISHED | EXPIRED
+    private String status;
+
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant createdAt;
 
@@ -26,6 +29,12 @@ public class BlogPostResponse {
 
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant publishedAt;
+
+    @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
+    private Instant scheduledPublishAt;
+
+    @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
+    private Instant expiresAt;
 
     public BlogPostResponse(BlogPost post) {
         this.id = post.getId();
@@ -40,5 +49,22 @@ public class BlogPostResponse {
         this.createdAt = post.getCreatedAt();
         this.updatedAt = post.getUpdatedAt();
         this.publishedAt = post.getPublishedAt();
+        this.scheduledPublishAt = post.getScheduledPublishAt();
+        this.expiresAt = post.getExpiresAt();
+        this.status = computeStatus(post);
+    }
+
+    private static String computeStatus(BlogPost post) {
+        Instant now = Instant.now();
+        if (post.getExpiresAt() != null && post.getExpiresAt().isBefore(now)) {
+            return "EXPIRED";
+        }
+        if (Boolean.TRUE.equals(post.getIsPublished())) {
+            return "PUBLISHED";
+        }
+        if (post.getScheduledPublishAt() != null && post.getScheduledPublishAt().isAfter(now)) {
+            return "SCHEDULED";
+        }
+        return "DRAFT";
     }
 }

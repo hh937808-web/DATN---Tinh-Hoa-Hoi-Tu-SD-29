@@ -27,11 +27,12 @@ public class AiQueryService {
     
     @Value("${openai.api.key}")
     private String openaiApiKey;
-    
+
     @Value("${openai.model:gpt-4o-mini}")
     private String openaiModel;
-    
-    private static final String OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+
+    @Value("${openai.base-url:https://api.openai.com/v1/chat/completions}")
+    private String openaiApiUrl;
     
     /**
      * Tạo SQL query từ câu hỏi tiếng Việt bằng OpenAI
@@ -508,7 +509,7 @@ public class AiQueryService {
             // Call API
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             ResponseEntity<String> response = restTemplate.exchange(
-                OPENAI_API_URL,
+                openaiApiUrl,
                 HttpMethod.POST,
                 entity,
                 String.class

@@ -1,8 +1,11 @@
 package com.example.datn_sd_29.blog.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+
+import java.time.Instant;
 
 @Data
 public class BlogPostRequest {
@@ -23,4 +26,12 @@ public class BlogPostRequest {
     private String category;
 
     private Boolean isPublished;
+
+    // Thời gian tự đăng bài (null = đăng ngay hoặc đang ở bản nháp)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "Asia/Ho_Chi_Minh")
+    private Instant scheduledPublishAt;
+
+    // Hạn kết thúc bài đăng (null = vô thời hạn, admin tự gỡ)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "Asia/Ho_Chi_Minh")
+    private Instant expiresAt;
 }

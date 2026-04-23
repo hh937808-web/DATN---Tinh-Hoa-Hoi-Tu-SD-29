@@ -43,9 +43,9 @@ public class BlogPostService {
                 .toList();
     }
 
-    // Customer: chỉ lấy bài đã xuất bản
+    // Customer: chỉ lấy bài đã xuất bản và chưa hết hạn
     public List<BlogPostResponse> getPublishedPosts() {
-        return blogPostRepository.findByIsPublishedTrueOrderByPublishedAtDesc()
+        return blogPostRepository.findActivePublished(Instant.now())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -53,7 +53,7 @@ public class BlogPostService {
 
     // Customer: lấy theo danh mục
     public List<BlogPostResponse> getPublishedByCategory(String category) {
-        return blogPostRepository.findByCategoryAndIsPublishedTrueOrderByPublishedAtDesc(category)
+        return blogPostRepository.findActivePublishedByCategory(category, Instant.now())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -70,6 +70,8 @@ public class BlogPostService {
 
     // Admin: tạo bài viết
     public BlogPostResponse createPost(BlogPostRequest request) {
+        validateSchedule(request);
+
         BlogPost post = new BlogPost();
         post.setTitle(request.getTitle());
         post.setSummary(request.getSummary());
@@ -78,23 +80,20 @@ public class BlogPostService {
         post.setCategory(request.getCategory());
         post.setCreatedAt(Instant.now());
         post.setViewCount(0);
+        post.setExpiresAt(request.getExpiresAt());
 
         // Lấy tên admin từ context
-        String author = getAdminName();
-        post.setAuthor(author);
+        post.setAuthor(getAdminName());
 
-        if (Boolean.TRUE.equals(request.getIsPublished())) {
-            post.setIsPublished(true);
-            post.setPublishedAt(Instant.now());
-        } else {
-            post.setIsPublished(false);
-        }
+        applyPublishState(post, request);
 
-        return new BlogPostResponse(blogPostRepository.save(post));
+        return toResponse(blogPostRepository.save(post));
     }
 
     // Admin: cập nhật bài viết
     public BlogPostResponse updatePost(Integer id, BlogPostRequest request) {
+        validateSchedule(request);
+
         BlogPost post = blogPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
 
@@ -104,16 +103,11 @@ public class BlogPostService {
         post.setThumbnailUrl(request.getThumbnailUrl());
         post.setCategory(request.getCategory());
         post.setUpdatedAt(Instant.now());
+        post.setExpiresAt(request.getExpiresAt());
 
-        // Xử lý trạng thái xuất bản
-        if (Boolean.TRUE.equals(request.getIsPublished()) && !Boolean.TRUE.equals(post.getIsPublished())) {
-            post.setIsPublished(true);
-            post.setPublishedAt(Instant.now());
-        } else if (Boolean.FALSE.equals(request.getIsPublished())) {
-            post.setIsPublished(false);
-        }
+        applyPublishState(post, request);
 
-        return new BlogPostResponse(blogPostRepository.save(post));
+        return toResponse(blogPostRepository.save(post));
     }
 
     // Admin: xóa bài viết
@@ -128,8 +122,49 @@ public class BlogPostService {
     public List<BlogPostResponse> searchPosts(String keyword) {
         return blogPostRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(keyword)
                 .stream()
-                .map(BlogPostResponse::new)
+                .map(this::toResponse)
                 .toList();
+    }
+
+    // Quyết định trạng thái xuất bản dựa trên request
+    // - scheduledPublishAt ở tương lai → lưu lịch, để draft
+    // - scheduledPublishAt null/quá khứ + isPublished=true → đăng ngay
+    // - isPublished=false → draft
+    private void applyPublishState(BlogPost post, BlogPostRequest request) {
+        Instant now = Instant.now();
+        Instant scheduled = request.getScheduledPublishAt();
+
+        if (scheduled != null && scheduled.isAfter(now)) {
+            // Lên lịch cho tương lai
+            post.setScheduledPublishAt(scheduled);
+            post.setIsPublished(false);
+            // Giữ nguyên publishedAt cũ nếu có (để lưu lịch sử)
+            return;
+        }
+
+        // Không lên lịch (hoặc lịch ở quá khứ) → xử lý theo isPublished
+        post.setScheduledPublishAt(null);
+
+        if (Boolean.TRUE.equals(request.getIsPublished())) {
+            if (!Boolean.TRUE.equals(post.getIsPublished())) {
+                post.setPublishedAt(now);
+            }
+            post.setIsPublished(true);
+        } else {
+            post.setIsPublished(false);
+        }
+    }
+
+    private void validateSchedule(BlogPostRequest request) {
+        Instant scheduled = request.getScheduledPublishAt();
+        Instant expires = request.getExpiresAt();
+
+        if (scheduled != null && expires != null && !expires.isAfter(scheduled)) {
+            throw new IllegalArgumentException("Hạn kết thúc phải sau thời gian đăng");
+        }
+        if (scheduled == null && expires != null && !expires.isAfter(Instant.now())) {
+            throw new IllegalArgumentException("Hạn kết thúc phải ở tương lai");
+        }
     }
 
     private String getAdminName() {
