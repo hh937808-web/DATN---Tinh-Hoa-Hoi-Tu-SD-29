@@ -28,24 +28,59 @@ public class KitchenBroadcastService {
      * @param itemName Item name
      */
     public void broadcastKitchenUpdate(String action, Integer itemId, String itemName) {
+        broadcastKitchenUpdate(action, itemId, itemName, null);
+    }
+
+    /**
+     * Broadcast với lý do (dùng cho ITEM_CANCELLED — gửi lý do cho staff hiển thị).
+     * reason có thể null nếu không áp dụng.
+     */
+    public void broadcastKitchenUpdate(String action, Integer itemId, String itemName, String reason) {
         try {
-            log.info("📢 Broadcasting kitchen update: action={}, itemId={}, itemName={}", 
-                    action, itemId, itemName);
-            
+            log.info("📢 Broadcasting kitchen update: action={}, itemId={}, itemName={}, reason={}",
+                    action, itemId, itemName, reason);
+
             Map<String, Object> message = new HashMap<>();
             message.put("action", action);
             message.put("itemId", itemId);
             message.put("itemName", itemName);
+            if (reason != null && !reason.isBlank()) {
+                message.put("reason", reason);
+            }
             message.put("timestamp", LocalDateTime.now().toString());
-            
+
             messagingTemplate.convertAndSend("/topic/kitchen-updates", message);
-            
+
             log.info("✅ Kitchen update broadcast sent successfully");
         } catch (Exception e) {
             log.error("❌ Failed to broadcast kitchen update: {}", e.getMessage(), e);
         }
     }
     
+    /**
+     * Broadcast khi bếp làm xong 1 món — kèm tên bàn để staff biết đi phục vụ.
+     */
+    public void broadcastItemDone(Integer itemId, String itemName, String tableName) {
+        try {
+            log.info("📢 Broadcasting ITEM_DONE: itemId={}, itemName={}, tableName={}",
+                    itemId, itemName, tableName);
+
+            Map<String, Object> message = new HashMap<>();
+            message.put("action", "ITEM_DONE");
+            message.put("itemId", itemId);
+            message.put("itemName", itemName);
+            if (tableName != null && !tableName.isBlank()) {
+                message.put("tableName", tableName);
+            }
+            message.put("timestamp", LocalDateTime.now().toString());
+
+            messagingTemplate.convertAndSend("/topic/kitchen-updates", message);
+            log.info("✅ ITEM_DONE broadcast sent");
+        } catch (Exception e) {
+            log.error("❌ Failed to broadcast ITEM_DONE: {}", e.getMessage(), e);
+        }
+    }
+
     /**
      * Broadcast bulk kitchen update (for multiple items ordered at once)
      */

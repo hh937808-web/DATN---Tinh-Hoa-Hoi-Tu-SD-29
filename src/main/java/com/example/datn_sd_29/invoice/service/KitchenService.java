@@ -153,10 +153,13 @@ public class KitchenService {
         }
 
         item.setStatus(InvoiceItemStatus.DONE);
-        
-        // Broadcast kitchen update
+
+        // Broadcast ITEM_DONE kèm tên bàn — staff nhận thông báo để đi phục vụ
         String itemName = getItemName(item);
-        kitchenBroadcastService.broadcastKitchenUpdate("STATUS_CHANGED", id, itemName);
+        String tableName = item.getDiningTable() != null
+                ? item.getDiningTable().getTableName()
+                : null;
+        kitchenBroadcastService.broadcastItemDone(id, itemName, tableName);
     }
 
     // ================= SERVE =================
@@ -202,16 +205,32 @@ public class KitchenService {
     }
 
     // ================= CANCEL =================
+    // Bếp hủy — được phép cả ORDERED (chưa làm) và IN_PROGRESS (đang làm giữa chừng hết nguyên liệu)
     @Transactional
-    public void cancelItem(Integer id, Integer quantityToCancel) {
-
+    public void cancelItem(Integer id, Integer quantityToCancel, String reason) {
         InvoiceItem item = getItemOrThrow(id);
-
-        if (item.getStatus() != InvoiceItemStatus.ORDERED) {
-            throw new RuntimeException("Only ORDERED items can be cancelled");
+        InvoiceItemStatus status = item.getStatus();
+        if (status != InvoiceItemStatus.ORDERED && status != InvoiceItemStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chỉ được hủy món đang Chờ làm hoặc Đang làm");
         }
+        doCancelItem(item, quantityToCancel, reason);
+    }
 
-        // Tính số lượng thực tế bị hủy
+    // Staff hủy — chỉ được hủy khi món CHƯA được bếp bắt đầu làm (ORDERED).
+    // Khi đã IN_PROGRESS thì staff phải báo bếp xử lý, không tự hủy được.
+    @Transactional
+    public void cancelItemByStaff(Integer id, Integer quantityToCancel) {
+        InvoiceItem item = getItemOrThrow(id);
+        if (item.getStatus() != InvoiceItemStatus.ORDERED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chỉ hủy được món chưa vào bếp. Món đang làm cần liên hệ bếp để xử lý.");
+        }
+        doCancelItem(item, quantityToCancel, null);
+    }
+
+    // Logic chung: trừ subtotal + đổi status/quantity + broadcast
+    private void doCancelItem(InvoiceItem item, Integer quantityToCancel, String reason) {
         int actualQuantityToCancel;
         if (quantityToCancel == null || quantityToCancel >= item.getQuantity()) {
             actualQuantityToCancel = item.getQuantity();
@@ -222,38 +241,29 @@ public class KitchenService {
             actualQuantityToCancel = quantityToCancel;
         }
 
-        // Tính số tiền cần trừ khỏi subtotalAmount
         java.math.BigDecimal amountToDeduct = item.getUnitPrice()
                 .multiply(java.math.BigDecimal.valueOf(actualQuantityToCancel));
 
-        // Cập nhật invoice subtotalAmount
         var invoice = item.getInvoice();
         if (invoice != null && invoice.getSubtotalAmount() != null) {
             java.math.BigDecimal currentSubtotal = invoice.getSubtotalAmount();
             java.math.BigDecimal newSubtotal = currentSubtotal.subtract(amountToDeduct);
-            
-            // Đảm bảo subtotal không bị âm
             if (newSubtotal.compareTo(java.math.BigDecimal.ZERO) < 0) {
                 newSubtotal = java.math.BigDecimal.ZERO;
             }
-            
             invoice.setSubtotalAmount(newSubtotal);
             invoiceRepository.save(invoice);
         }
 
-        // Cập nhật item status/quantity
         if (actualQuantityToCancel >= item.getQuantity()) {
-            // Hủy toàn bộ → set status CANCELLED
             item.setStatus(InvoiceItemStatus.CANCELLED);
         } else {
-            // Còn lại → giảm quantity, giữ nguyên status ORDERED
             int newQuantity = item.getQuantity() - actualQuantityToCancel;
             item.setQuantity(newQuantity);
         }
-        
-        // Broadcast kitchen update
+
         String itemName = getItemName(item);
-        kitchenBroadcastService.broadcastKitchenUpdate("ITEM_CANCELLED", id, itemName);
+        kitchenBroadcastService.broadcastKitchenUpdate("ITEM_CANCELLED", item.getId(), itemName, reason);
     }
 
     // ================= COMMON =================

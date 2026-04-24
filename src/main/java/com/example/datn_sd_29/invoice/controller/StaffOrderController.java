@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -81,5 +82,17 @@ public class StaffOrderController {
     public ResponseEntity<ApiResponse<Void>> activateDessert(@PathVariable Integer itemId) {
         kitchenService.activateItem(itemId);
         return ResponseEntity.ok(ApiResponse.success("Dessert activated", null));
+    }
+
+    // Staff hủy món — chỉ cho phép hủy khi món CHƯA vào bếp (status = ORDERED).
+    // Món đang làm (IN_PROGRESS) staff không được tự hủy, phải nhờ bếp.
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
+    @PutMapping("/staff/items/{itemId}/cancel")
+    public ResponseEntity<ApiResponse<Void>> staffCancelItem(
+            @PathVariable Integer itemId,
+            @RequestParam(required = false) Integer quantityToCancel
+    ) {
+        kitchenService.cancelItemByStaff(itemId, quantityToCancel);
+        return ResponseEntity.ok(ApiResponse.success("Cancelled", null));
     }
 }
