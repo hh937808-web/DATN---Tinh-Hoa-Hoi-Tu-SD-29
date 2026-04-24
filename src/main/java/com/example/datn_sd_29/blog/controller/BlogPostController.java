@@ -45,10 +45,38 @@ public class BlogPostController {
         return ResponseEntity.ok(Map.of("data", post));
     }
 
-    @DeleteMapping("/admin/{id}")
-    public ResponseEntity<Map<String, Object>> deletePost(@PathVariable Integer id) {
-        blogPostService.deletePost(id);
-        return ResponseEntity.ok(Map.of("message", "Xóa bài viết thành công"));
+    // Vô hiệu hóa (soft delete) — action mặc định khi admin bấm nút trong list chính
+    @PutMapping("/admin/{id}/disable")
+    public ResponseEntity<Map<String, Object>> disablePost(@PathVariable Integer id) {
+        BlogPostResponse post = blogPostService.disablePost(id);
+        return ResponseEntity.ok(Map.of(
+                "message", "Vô hiệu hóa bài viết",
+                "data", post
+        ));
+    }
+
+    // Kích hoạt lại bài đã vô hiệu hóa
+    @PutMapping("/admin/{id}/restore")
+    public ResponseEntity<Map<String, Object>> restorePost(@PathVariable Integer id) {
+        BlogPostResponse post = blogPostService.restorePost(id);
+        return ResponseEntity.ok(Map.of(
+                "message", "Kích hoạt lại bài viết",
+                "data", post
+        ));
+    }
+
+    // Danh sách bài đã vô hiệu hóa (tab "Đã vô hiệu hóa")
+    @GetMapping("/admin/disabled")
+    public ResponseEntity<Map<String, Object>> getDisabledPosts() {
+        List<BlogPostResponse> posts = blogPostService.getDisabledPosts();
+        return ResponseEntity.ok(Map.of("data", posts));
+    }
+
+    // Xóa vĩnh viễn — chỉ dành cho bài đã vô hiệu hóa, cần confirm ở UI
+    @DeleteMapping("/admin/{id}/permanent")
+    public ResponseEntity<Map<String, Object>> permanentDeletePost(@PathVariable Integer id) {
+        blogPostService.permanentlyDeletePost(id);
+        return ResponseEntity.ok(Map.of("message", "Đã xóa vĩnh viễn bài viết"));
     }
 
     @GetMapping("/admin/search")

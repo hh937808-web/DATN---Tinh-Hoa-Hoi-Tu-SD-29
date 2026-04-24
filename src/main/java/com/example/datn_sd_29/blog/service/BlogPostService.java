@@ -26,7 +26,6 @@ public class BlogPostService {
         if (!primaryImages.isEmpty()) {
             res.setThumbnailUrl(primaryImages.get(0).getImageUrl());
         } else {
-            // Fallback: lấy ảnh đầu tiên nếu không có primary
             List<Image> allImages = imageRepository.findByBlogPost_IdOrderByIsPrimaryDesc(post.getId());
             if (!allImages.isEmpty()) {
                 res.setThumbnailUrl(allImages.get(0).getImageUrl());
@@ -35,40 +34,38 @@ public class BlogPostService {
         return res;
     }
 
-    // Admin: lấy tất cả bài viết
+    // Admin: bài còn hoạt động (chưa vô hiệu hóa)
     public List<BlogPostResponse> getAllPosts() {
-        return blogPostRepository.findAllByOrderByCreatedAtDesc()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return blogPostRepository.findAllActive().stream().map(this::toResponse).toList();
     }
 
-    // Customer: chỉ lấy bài đã xuất bản và chưa hết hạn
+    // Admin: bài đã vô hiệu hóa
+    public List<BlogPostResponse> getDisabledPosts() {
+        return blogPostRepository.findAllDisabled().stream().map(this::toResponse).toList();
+    }
+
+    // Customer: chỉ bài đã xuất bản, chưa hết hạn, chưa vô hiệu
     public List<BlogPostResponse> getPublishedPosts() {
-        return blogPostRepository.findActivePublished(Instant.now())
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return blogPostRepository.findActivePublished(Instant.now()).stream().map(this::toResponse).toList();
     }
 
-    // Customer: lấy theo danh mục
     public List<BlogPostResponse> getPublishedByCategory(String category) {
         return blogPostRepository.findActivePublishedByCategory(category, Instant.now())
-                .stream()
-                .map(this::toResponse)
-                .toList();
+                .stream().map(this::toResponse).toList();
     }
 
-    // Lấy chi tiết + tăng lượt xem
     public BlogPostResponse getPostById(Integer id) {
         BlogPost post = blogPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
+        // Bài đã vô hiệu hóa → không cho customer xem
+        if (post.getDisabledAt() != null) {
+            throw new IllegalArgumentException("Bài viết không khả dụng");
+        }
         post.setViewCount(post.getViewCount() + 1);
         blogPostRepository.save(post);
         return toResponse(post);
     }
 
-    // Admin: tạo bài viết
     public BlogPostResponse createPost(BlogPostRequest request) {
         validateSchedule(request);
 
@@ -81,21 +78,28 @@ public class BlogPostService {
         post.setCreatedAt(Instant.now());
         post.setViewCount(0);
         post.setExpiresAt(request.getExpiresAt());
-
-        // Lấy tên admin từ context
-        post.setAuthor(getAdminName());
+        post.setAuthor(getCurrentUserName());
 
         applyPublishState(post, request);
 
         return toResponse(blogPostRepository.save(post));
     }
 
-    // Admin: cập nhật bài viết
     public BlogPostResponse updatePost(Integer id, BlogPostRequest request) {
         validateSchedule(request);
 
         BlogPost post = blogPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
+        if (post.getDisabledAt() != null) {
+            throw new IllegalArgumentException("Không thể chỉnh sửa bài đã vô hiệu hóa. Vui lòng kích hoạt lại trước.");
+        }
+
+        // AUDIT DIFF — snapshot BEFORE modification
+        java.util.Map<String, Object> before = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                post,
+                "title", "summary", "category", "content",
+                "isPublished", "scheduledPublishAt", "expiresAt", "thumbnailUrl"
+        );
 
         post.setTitle(request.getTitle());
         post.setSummary(request.getSummary());
@@ -106,43 +110,91 @@ public class BlogPostService {
         post.setExpiresAt(request.getExpiresAt());
 
         applyPublishState(post, request);
+        BlogPost saved = blogPostRepository.save(post);
 
+        // AUDIT DIFF — snapshot AFTER save, tính diff và đẩy lên context
+        java.util.Map<String, Object> after = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                saved,
+                "title", "summary", "category", "content",
+                "isPublished", "scheduledPublishAt", "expiresAt", "thumbnailUrl"
+        );
+        com.example.datn_sd_29.audit.context.AuditContext.setChanges(
+                com.example.datn_sd_29.audit.util.AuditDiffUtil.diff(before, after, BLOG_FIELD_LABELS)
+        );
+
+        return toResponse(saved);
+    }
+
+    // Nhãn tiếng Việt cho các field của BlogPost (hiển thị trong audit diff)
+    private static final java.util.Map<String, String> BLOG_FIELD_LABELS = java.util.Map.of(
+            "title", "Tiêu đề",
+            "summary", "Tóm tắt",
+            "category", "Danh mục",
+            "content", "Nội dung",
+            "isPublished", "Trạng thái xuất bản",
+            "scheduledPublishAt", "Thời gian lên lịch đăng",
+            "expiresAt", "Hạn kết thúc",
+            "thumbnailUrl", "Ảnh đại diện"
+    );
+
+    // ===== SOFT DELETE (Vô hiệu hóa) =====
+
+    public BlogPostResponse disablePost(Integer id) {
+        BlogPost post = blogPostRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
+        if (post.getDisabledAt() != null) {
+            throw new IllegalArgumentException("Bài đã được vô hiệu hóa trước đó");
+        }
+        post.setDisabledAt(Instant.now());
+        post.setDisabledBy(getCurrentUserName());
+        post.setIsPublished(false); // gỡ khỏi customer ngay
         return toResponse(blogPostRepository.save(post));
     }
 
-    // Admin: xóa bài viết
-    public void deletePost(Integer id) {
-        if (!blogPostRepository.existsById(id)) {
-            throw new IllegalArgumentException("Bài viết không tồn tại");
+    public BlogPostResponse restorePost(Integer id) {
+        BlogPost post = blogPostRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
+        if (post.getDisabledAt() == null) {
+            throw new IllegalArgumentException("Bài chưa bị vô hiệu hóa");
+        }
+        post.setDisabledAt(null);
+        post.setDisabledBy(null);
+        post.setUpdatedAt(Instant.now());
+        // Bài khôi phục về trạng thái DRAFT (admin tự quyết xuất bản lại)
+        return toResponse(blogPostRepository.save(post));
+    }
+
+    // Hard delete — CHỈ cho phép với bài đã bị vô hiệu hóa + xác nhận từ admin
+    public void permanentlyDeletePost(Integer id) {
+        BlogPost post = blogPostRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Bài viết không tồn tại"));
+        if (post.getDisabledAt() == null) {
+            throw new IllegalArgumentException("Chỉ có thể xóa vĩnh viễn bài đã bị vô hiệu hóa");
+        }
+        // Xóa ảnh trước để tránh FK violation
+        List<Image> images = imageRepository.findByBlogPost_IdOrderByIsPrimaryDesc(id);
+        if (!images.isEmpty()) {
+            imageRepository.deleteAll(images);
         }
         blogPostRepository.deleteById(id);
     }
 
-    // Admin: tìm kiếm
     public List<BlogPostResponse> searchPosts(String keyword) {
-        return blogPostRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(keyword)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return blogPostRepository.searchActive(keyword).stream().map(this::toResponse).toList();
     }
 
-    // Quyết định trạng thái xuất bản dựa trên request
-    // - scheduledPublishAt ở tương lai → lưu lịch, để draft
-    // - scheduledPublishAt null/quá khứ + isPublished=true → đăng ngay
-    // - isPublished=false → draft
+    // ===== HELPERS =====
+
     private void applyPublishState(BlogPost post, BlogPostRequest request) {
         Instant now = Instant.now();
         Instant scheduled = request.getScheduledPublishAt();
 
         if (scheduled != null && scheduled.isAfter(now)) {
-            // Lên lịch cho tương lai
             post.setScheduledPublishAt(scheduled);
             post.setIsPublished(false);
-            // Giữ nguyên publishedAt cũ nếu có (để lưu lịch sử)
             return;
         }
 
-        // Không lên lịch (hoặc lịch ở quá khứ) → xử lý theo isPublished
         post.setScheduledPublishAt(null);
 
         if (Boolean.TRUE.equals(request.getIsPublished())) {
@@ -167,7 +219,7 @@ public class BlogPostService {
         }
     }
 
-    private String getAdminName() {
+    private String getCurrentUserName() {
         try {
             var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {

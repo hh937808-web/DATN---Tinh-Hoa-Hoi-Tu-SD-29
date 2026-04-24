@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -39,4 +41,7 @@ public class AuditLogRequest {
     
     // Performance Metrics
     private Integer executionTimeMs;
+
+    // Diff cho UPDATE — service tầng nghiệp vụ set qua AuditContext
+    private List<FieldChange> changes;
 }

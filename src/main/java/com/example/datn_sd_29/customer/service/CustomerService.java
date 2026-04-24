@@ -128,6 +128,11 @@ public class CustomerService {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // AUDIT DIFF — snapshot BEFORE modification
+        java.util.Map<String, Object> before = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                customer, "fullName", "email", "phoneNumber", "dateOfBirth"
+        );
+
         boolean isEmailChanged = false;
 
         // ========================
@@ -159,7 +164,15 @@ public class CustomerService {
             customer.setDateOfBirth(request.getDateOfBirth());
         }
 
-        customerRepository.save(customer);
+        Customer saved = customerRepository.save(customer);
+
+        // AUDIT DIFF — diff trước/sau
+        java.util.Map<String, Object> after = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                saved, "fullName", "email", "phoneNumber", "dateOfBirth"
+        );
+        com.example.datn_sd_29.audit.context.AuditContext.setChanges(
+                com.example.datn_sd_29.audit.util.AuditDiffUtil.diff(before, after, CUSTOMER_FIELD_LABELS)
+        );
 
         String newToken = null;
 
@@ -238,6 +251,13 @@ public class CustomerService {
                 .accessToken(newToken)
                 .build();
     }
+
+    private static final java.util.Map<String, String> CUSTOMER_FIELD_LABELS = java.util.Map.of(
+            "fullName", "Họ tên",
+            "email", "Email",
+            "phoneNumber", "Số điện thoại",
+            "dateOfBirth", "Ngày sinh"
+    );
 }
 
 

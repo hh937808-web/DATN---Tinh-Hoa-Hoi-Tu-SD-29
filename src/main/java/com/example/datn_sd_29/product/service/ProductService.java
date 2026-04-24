@@ -75,6 +75,11 @@ public class ProductService {
                         new IllegalArgumentException("Product not found with id: " + id)
                 );
 
+        // AUDIT DIFF — snapshot BEFORE modification
+        java.util.Map<String, Object> before = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                product, "productCode", "productName", "productCategory", "unitPrice", "description", "availabilityStatus"
+        );
+
         String code = request.getProductCode();
         if (code != null && !code.isBlank()) {
             if (productRepository.existsByProductCodeAndIdNot(code, id)) {
@@ -90,8 +95,25 @@ public class ProductService {
         product.setAvailabilityStatus(request.getAvailabilityStatus());
         Product updated = productRepository.save(product);
 
+        // AUDIT DIFF — diff trước/sau
+        java.util.Map<String, Object> after = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                updated, "productCode", "productName", "productCategory", "unitPrice", "description", "availabilityStatus"
+        );
+        com.example.datn_sd_29.audit.context.AuditContext.setChanges(
+                com.example.datn_sd_29.audit.util.AuditDiffUtil.diff(before, after, PRODUCT_FIELD_LABELS)
+        );
+
         return toProductResponse(updated);
     }
+
+    private static final java.util.Map<String, String> PRODUCT_FIELD_LABELS = java.util.Map.of(
+            "productCode", "Mã sản phẩm",
+            "productName", "Tên sản phẩm",
+            "productCategory", "Danh mục",
+            "unitPrice", "Giá bán",
+            "description", "Mô tả",
+            "availabilityStatus", "Trạng thái kinh doanh"
+    );
 
     public void deleteProduct(Integer id) {
 

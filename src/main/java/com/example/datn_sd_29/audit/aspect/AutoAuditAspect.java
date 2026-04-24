@@ -1,7 +1,16 @@
 package com.example.datn_sd_29.audit.aspect;
 
+import com.example.datn_sd_29.audit.context.AuditContext;
 import com.example.datn_sd_29.audit.dto.AuditLogRequest;
 import com.example.datn_sd_29.audit.service.AuditLogService;
+import com.example.datn_sd_29.customer.entity.Customer;
+import com.example.datn_sd_29.customer.repository.CustomerRepository;
+import com.example.datn_sd_29.employee.entity.Employee;
+import com.example.datn_sd_29.employee.repository.EmployeeRepository;
+import com.example.datn_sd_29.product.entity.Product;
+import com.example.datn_sd_29.product.repository.ProductRepository;
+import com.example.datn_sd_29.product_combo.entity.ProductCombo;
+import com.example.datn_sd_29.product_combo.repository.ProductComboRepository;
 import com.example.datn_sd_29.security.JwtService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +19,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +29,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 
 /**
  * Automatic audit aspect that logs all REST controller methods
@@ -32,6 +43,13 @@ public class AutoAuditAspect {
 
     private final AuditLogService auditLogService;
     private final JwtService jwtService;
+    private final EmployeeRepository employeeRepository;
+    private final CustomerRepository customerRepository;
+    private final ProductRepository productRepository;
+    private final ProductComboRepository productComboRepository;
+
+    @Value("${security.api.enabled:true}")
+    private boolean securityEnabled;
 
     /**
      * Automatically audit all controller methods in specific packages
@@ -58,37 +76,58 @@ public class AutoAuditAspect {
             return joinPoint.proceed();
         }
         
-        // Extract user information from JWT token
+        // Định danh user — cùng pattern với PaymentService/WalkInService/StaffOrderService:
+        //   security.api.enabled = true  → đọc từ JWT
+        //   security.api.enabled = false → đọc header X-Employee-Username / X-Customer-Email rồi lookup DB để lấy role THẬT
         String userEmail = null;
         String userRole = null;
         Integer userId = null;
-        
-        try {
-            String authHeader = request.getHeader("Authorization");
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                String token = authHeader.substring(7);
-                String subject = jwtService.extractEmail(token); // This is username for employees, email for customers
-                userRole = jwtService.extractRole(token);
-                userId = jwtService.extractCustomerId(token); // This is employeeId for employees, customerId for customers
-                
-                // For employees, subject is username, not email
-                // For customers (USER role), subject is email
-                if ("USER".equals(userRole)) {
-                    userEmail = subject; // Customer email
-                } else {
-                    userEmail = subject; // Employee username (we'll use this as identifier)
+        String userFullName = null;
+
+        if (securityEnabled) {
+            try {
+                String authHeader = request.getHeader("Authorization");
+                if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                    String token = authHeader.substring(7);
+                    userEmail = jwtService.extractEmail(token); // username với employee, email với customer
+                    userRole = jwtService.extractRole(token);
+                    userId = jwtService.extractCustomerId(token);
+                }
+            } catch (Exception e) {
+                log.debug("Failed to extract user info from JWT: {}", e.getMessage());
+            }
+        } else {
+            // Security tắt — lookup DB để lấy role + fullName chính xác
+            String empUsername = request.getHeader("X-Employee-Username");
+            if (empUsername != null && !empUsername.trim().isEmpty()) {
+                Employee emp = employeeRepository.findByUsernameIgnoreCase(empUsername.trim()).orElse(null);
+                if (emp != null) {
+                    userEmail = emp.getUsername();
+                    userRole = emp.getRole();           // ADMIN / STAFF / RECEPTION / KITCHEN — LẤY TỪ DB
+                    userId = emp.getId();
+                    userFullName = emp.getFullName();
                 }
             }
-        } catch (Exception e) {
-            log.debug("Failed to extract user info from token: {}", e.getMessage());
+
+            if (userEmail == null) {
+                String custEmail = request.getHeader("X-Customer-Email");
+                if (custEmail != null && !custEmail.trim().isEmpty()) {
+                    Customer cust = customerRepository.findByEmailIgnoreCase(custEmail.trim()).orElse(null);
+                    if (cust != null) {
+                        userEmail = cust.getEmail();
+                        userRole = "USER";
+                        userId = cust.getId();
+                        userFullName = cust.getFullName();
+                    }
+                }
+            }
         }
-        
-        // Skip if user is not authenticated
+
+        // Không định danh được → log với anonymous để vẫn có dấu vết (không skip)
         if (userEmail == null || userEmail.isEmpty() || "anonymousUser".equals(userEmail)) {
-            return joinPoint.proceed();
+            userEmail = "anonymous";
+            userRole = "ANONYMOUS";
         }
-        
-        String userFullName = null; // Can be enhanced later to fetch from database
         
         // Determine action type and entity from method and request
         String actionType = determineActionType(method, request);
@@ -100,6 +139,7 @@ public class AutoAuditAspect {
         String severity = determineSeverity(actionType);
         
         // Build audit log request
+        String entityId = extractEntityIdFromUri(request.getRequestURI());
         AuditLogRequest.AuditLogRequestBuilder auditBuilder = AuditLogRequest.builder()
                 .userEmail(userEmail)
                 .userRole(userRole)
@@ -107,6 +147,7 @@ public class AutoAuditAspect {
                 .userFullName(userFullName)
                 .actionType(actionType)
                 .entityType(entityType)
+                .entityId(entityId)
                 .actionDescription(description)
                 .severity(severity)
                 .ipAddress(auditLogService.extractIpAddress(request))
@@ -141,24 +182,31 @@ public class AutoAuditAspect {
         } finally {
             // Calculate execution time
             long executionTime = System.currentTimeMillis() - startTime;
-            
+
+            // Đọc diff từ AuditContext — service nghiệp vụ set qua ThreadLocal trước khi method return
+            java.util.List<com.example.datn_sd_29.audit.dto.FieldChange> changes = AuditContext.getChanges();
+
             // Complete audit log
             auditBuilder
                     .responseStatus(responseStatus)
                     .responseMessage(responseMessage)
-                    .executionTimeMs((int) executionTime);
-            
+                    .executionTimeMs((int) executionTime)
+                    .changes(changes);
+
             // Save audit log asynchronously
             try {
                 auditLogService.logAsync(auditBuilder.build());
             } catch (Exception e) {
                 log.error("Failed to save audit log: {}", e.getMessage());
             }
+
+            // CRITICAL: luôn clear context để tránh rò rỉ giữa các request trên cùng thread
+            AuditContext.clear();
         }
-        
+
         return result;
     }
-    
+
     /**
      * Extract request body from method arguments
      */
@@ -231,13 +279,408 @@ public class AutoAuditAspect {
             if (uri != null && uri.contains("/tables") && requestBody != null) {
                 return extractTableDetails(requestBody, actionType);
             }
-            
+
+            // Blog endpoints (xử lý TRƯỚC fallback — kể cả khi body null)
+            if (uri != null && uri.startsWith("/api/blog/admin")) {
+                return extractBlogDetails(actionType, uri, requestBody);
+            }
+
+            // Kitchen item actions (URL-driven, không có body)
+            if (actionType != null && actionType.startsWith("KITCHEN_ITEM_")) {
+                return extractKitchenActionDetails(actionType, uri);
+            }
+
+            // Review / feedback admin actions
+            if (actionType != null && actionType.startsWith("REVIEW_")) {
+                return extractReviewActionDetails(actionType, uri, requestBody);
+            }
+
+            // Payment-specific actions
+            if (actionType != null && (actionType.startsWith("PAYMENT_") || actionType.startsWith("INVOICE_ITEM_"))) {
+                return extractPaymentActionDetails(actionType, uri, requestBody);
+            }
+
+            // Reservation lifecycle actions beyond CREATE
+            if (actionType != null && actionType.startsWith("RESERVATION_") && !"RESERVATION_CREATE".equals(actionType)) {
+                return extractReservationActionDetails(actionType, uri);
+            }
+
+            // Walk-in lifecycle actions
+            if (actionType != null && actionType.startsWith("WALKIN_")) {
+                return extractWalkinActionDetails(actionType, uri, requestBody);
+            }
+
+            // Auth actions
+            if (actionType != null && (actionType.equals("LOGOUT") || actionType.startsWith("REGISTER_"))) {
+                return extractAuthActionDetails(actionType, requestBody);
+            }
+
+            // Customer specific actions
+            if (actionType != null && actionType.startsWith("CUSTOMER_") && !"CUSTOMER_PROFILE_UPDATE".equals(actionType)) {
+                return extractCustomerActionDetails(actionType, uri, requestBody);
+            }
+
+            // Query Builder
+            if (actionType != null && (actionType.startsWith("QUERY_") || actionType.startsWith("SAVED_QUERY_") || actionType.startsWith("DASHBOARD_"))) {
+                return extractQueryBuilderDetails(actionType, uri, requestBody);
+            }
+
         } catch (Exception e) {
             log.debug("Failed to generate detailed description: {}", e.getMessage());
         }
-        
+
         // Fallback to basic description
         return generateDescription(actionType, entityType, uri);
+    }
+
+    /**
+     * Mô tả chi tiết cho các thao tác trên bài viết (blog).
+     * Format: "<Tên action>: \"<tiêu đề>\" [<danh mục>] - <thông tin bổ sung>"
+     * Đọc vào hội đồng hiểu ngay ai làm gì với bài nào.
+     */
+    private String extractBlogDetails(String actionType, String uri, Object requestBody) {
+        String postId = extractEntityIdFromUri(uri);
+        String title = safeInvokeMethod(requestBody, "getTitle", String.class);
+        String category = safeInvokeMethod(requestBody, "getCategory", String.class);
+        Boolean isPublished = safeInvokeMethod(requestBody, "getIsPublished", Boolean.class);
+        Object scheduledAt = safeInvokeMethod(requestBody, "getScheduledPublishAt", Object.class);
+        Object expiresAt = safeInvokeMethod(requestBody, "getExpiresAt", Object.class);
+
+        StringBuilder sb = new StringBuilder();
+        switch (actionType) {
+            case "BLOG_CREATE":
+                sb.append("Tạo mới bài viết");
+                if (title != null && !title.isEmpty()) {
+                    sb.append(": \"").append(truncate(title, 80)).append("\"");
+                }
+                if (category != null && !category.isEmpty()) {
+                    sb.append(" [").append(category).append("]");
+                }
+                if (scheduledAt != null) {
+                    sb.append(" - Lên lịch đăng: ").append(scheduledAt);
+                } else if (Boolean.TRUE.equals(isPublished)) {
+                    sb.append(" - Xuất bản ngay");
+                } else {
+                    sb.append(" - Lưu bản nháp");
+                }
+                if (expiresAt != null) {
+                    sb.append(" - Hết hạn: ").append(expiresAt);
+                }
+                return sb.toString();
+
+            case "BLOG_UPDATE":
+                sb.append("Cập nhật bài viết");
+                if (postId != null) sb.append(" #").append(postId);
+                if (title != null && !title.isEmpty()) {
+                    sb.append(": \"").append(truncate(title, 80)).append("\"");
+                }
+                if (category != null && !category.isEmpty()) {
+                    sb.append(" [").append(category).append("]");
+                }
+                if (scheduledAt != null) {
+                    sb.append(" - Lên lịch đăng: ").append(scheduledAt);
+                } else if (Boolean.TRUE.equals(isPublished)) {
+                    sb.append(" - Đánh dấu xuất bản");
+                }
+                return sb.toString();
+
+            case "BLOG_DISABLE":
+                sb.append("Vô hiệu hóa bài viết");
+                if (postId != null) sb.append(" #").append(postId);
+                sb.append(" (chuyển sang danh sách vô hiệu, dữ liệu vẫn lưu trong DB)");
+                return sb.toString();
+
+            case "BLOG_RESTORE":
+                sb.append("Kích hoạt lại bài viết");
+                if (postId != null) sb.append(" #").append(postId);
+                sb.append(" (từ danh sách vô hiệu về bản nháp)");
+                return sb.toString();
+
+            case "BLOG_HARD_DELETE":
+                sb.append("Xóa vĩnh viễn bài viết");
+                if (postId != null) sb.append(" #").append(postId);
+                sb.append(" (xóa cứng, không thể khôi phục)");
+                return sb.toString();
+
+            case "BLOG_AI_GENERATE":
+                sb.append("Yêu cầu AI viết nội dung bài");
+                if (title != null && !title.isEmpty()) {
+                    sb.append(" - Tiêu đề: \"").append(truncate(title, 80)).append("\"");
+                }
+                if (category != null && !category.isEmpty()) {
+                    sb.append(" [").append(category).append("]");
+                }
+                return sb.toString();
+
+            default:
+                return "Thao tác trên bài viết" + (postId != null ? " #" + postId : "");
+        }
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    // ===== KITCHEN =====
+    private String extractKitchenActionDetails(String actionType, String uri) {
+        String itemId = extractEntityIdFromUri(uri);
+        String idSuffix = itemId != null ? " #" + itemId : "";
+        switch (actionType) {
+            case "KITCHEN_ITEM_START":    return "Bắt đầu nấu món" + idSuffix;
+            case "KITCHEN_ITEM_DONE":     return "Hoàn tất nấu món" + idSuffix;
+            case "KITCHEN_ITEM_SERVE":    return "Phục vụ món" + idSuffix + " đến bàn";
+            case "KITCHEN_ITEM_CANCEL":   return "Hủy món" + idSuffix + " trong đơn";
+            case "KITCHEN_ITEM_ACTIVATE": return "Kích hoạt dessert" + idSuffix;
+            default: return "Thao tác bếp" + idSuffix;
+        }
+    }
+
+    // ===== REVIEW / FEEDBACK =====
+    private String extractReviewActionDetails(String actionType, String uri, Object requestBody) {
+        String reviewId = extractEntityIdFromUri(uri);
+        String idSuffix = reviewId != null ? " #" + reviewId : "";
+        Integer rating = safeInvokeMethod(requestBody, "getRating", Integer.class);
+        String content = safeInvokeMethod(requestBody, "getContent", String.class);
+
+        switch (actionType) {
+            case "REVIEW_CREATE": {
+                StringBuilder sb = new StringBuilder("Gửi đánh giá mới");
+                if (rating != null) sb.append(" - ").append(rating).append(" sao");
+                if (content != null && !content.isEmpty()) sb.append(" - Nội dung: \"").append(truncate(content, 80)).append("\"");
+                return sb.toString();
+            }
+            case "REVIEW_APPROVE": return "Phê duyệt đánh giá" + idSuffix + " (hiển thị công khai)";
+            case "REVIEW_REJECT":  return "Từ chối đánh giá" + idSuffix + " (ẩn khỏi hiển thị)";
+            case "REVIEW_DELETE":  return "Xóa đánh giá" + idSuffix;
+            default: return "Thao tác đánh giá" + idSuffix;
+        }
+    }
+
+    // ===== PAYMENT / INVOICE =====
+    private String extractPaymentActionDetails(String actionType, String uri, Object requestBody) {
+        Integer invoiceId = safeInvokeMethod(requestBody, "getInvoiceId", Integer.class);
+        BigDecimal totalAmount = safeInvokeMethod(requestBody, "getTotalAmount", BigDecimal.class);
+        String paymentMethod = safeInvokeMethod(requestBody, "getPaymentMethod", String.class);
+        BigDecimal discountAmount = safeInvokeMethod(requestBody, "getDiscountAmount", BigDecimal.class);
+        Integer itemId = extractEntityIdFromUri(uri) != null ? Integer.valueOf(extractEntityIdFromUri(uri)) : null;
+        Integer quantity = safeInvokeMethod(requestBody, "getQuantity", Integer.class);
+        Integer productId = safeInvokeMethod(requestBody, "getProductId", Integer.class);
+        Integer comboId = safeInvokeMethod(requestBody, "getComboId", Integer.class);
+
+        StringBuilder sb = new StringBuilder();
+        switch (actionType) {
+            case "PAYMENT_CHECKOUT":
+                sb.append("Thanh toán hóa đơn");
+                if (invoiceId != null) sb.append(" #").append(invoiceId);
+                if (totalAmount != null) sb.append(" - Tổng: ").append(formatMoney(totalAmount));
+                if (paymentMethod != null) sb.append(" - Phương thức: ").append(translatePaymentMethod(paymentMethod));
+                if (discountAmount != null && discountAmount.signum() > 0) sb.append(" - Giảm giá: ").append(formatMoney(discountAmount));
+                return sb.toString();
+            case "PAYMENT_CANCEL":
+                sb.append("Hủy thanh toán");
+                if (invoiceId != null) sb.append(" hóa đơn #").append(invoiceId);
+                return sb.toString();
+            case "INVOICE_ITEM_ADD": {
+                // Lookup tên sản phẩm/combo để audit log có đủ thông tin truy vết tranh chấp
+                String itemName = lookupProductOrComboName(productId, comboId);
+                sb.append("Thêm món");
+                if (itemName != null) sb.append(" '").append(itemName).append("'");
+                if (invoiceId != null) sb.append(" vào hóa đơn #").append(invoiceId);
+                if (quantity != null) sb.append(" - SL: ").append(quantity);
+                return sb.toString();
+            }
+            case "INVOICE_ORDER_ADD_ITEMS": {
+                // Request body là TableOrderRequest với list items — gom tên từng món
+                String itemsList = summarizeOrderItems(requestBody);
+                sb.append("Gọi thêm món cho bàn");
+                if (itemsList != null && !itemsList.isEmpty()) sb.append(": ").append(itemsList);
+                return sb.toString();
+            }
+            case "INVOICE_ITEM_UPDATE":
+                sb.append("Cập nhật món #").append(itemId != null ? itemId : "?");
+                if (quantity != null) sb.append(" - SL mới: ").append(quantity);
+                return sb.toString();
+            case "INVOICE_ITEM_REMOVE":
+                sb.append("Xóa món #").append(itemId != null ? itemId : "?").append(" khỏi hóa đơn");
+                return sb.toString();
+            default:
+                return "Thao tác hóa đơn";
+        }
+    }
+
+    /**
+     * Lookup tên Product hoặc ProductCombo từ ID — trả null nếu không tìm được.
+     */
+    private String lookupProductOrComboName(Integer productId, Integer comboId) {
+        try {
+            if (productId != null) {
+                Product p = productRepository.findById(productId).orElse(null);
+                if (p != null) {
+                    // Thử nhiều tên field có thể dùng
+                    String name = safeInvokeMethod(p, "getProductName", String.class);
+                    if (name == null) name = safeInvokeMethod(p, "getName", String.class);
+                    return name;
+                }
+            }
+            if (comboId != null) {
+                ProductCombo c = productComboRepository.findById(comboId).orElse(null);
+                if (c != null) {
+                    String name = safeInvokeMethod(c, "getComboName", String.class);
+                    if (name == null) name = safeInvokeMethod(c, "getName", String.class);
+                    return name;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Không lookup được tên sản phẩm/combo: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Gom tên các items trong TableOrderRequest → chuỗi dạng "Lẩu bò x2, Tôm hùm x1, Rau muống x3"
+     */
+    @SuppressWarnings("unchecked")
+    private String summarizeOrderItems(Object requestBody) {
+        try {
+            Object itemsObj = safeInvokeMethod(requestBody, "getItems", Object.class);
+            if (!(itemsObj instanceof java.util.List)) return null;
+            java.util.List<Object> items = (java.util.List<Object>) itemsObj;
+            StringBuilder sb = new StringBuilder();
+            int max = Math.min(items.size(), 5); // tránh log quá dài
+            for (int i = 0; i < max; i++) {
+                Object item = items.get(i);
+                Integer pId = safeInvokeMethod(item, "getProductId", Integer.class);
+                Integer cId = safeInvokeMethod(item, "getProductComboId", Integer.class);
+                Integer qty = safeInvokeMethod(item, "getQuantity", Integer.class);
+                String name = lookupProductOrComboName(pId, cId);
+                if (name == null) name = pId != null ? "SP#" + pId : (cId != null ? "Combo#" + cId : "?");
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(name);
+                if (qty != null) sb.append(" x").append(qty);
+            }
+            if (items.size() > max) sb.append(", …+").append(items.size() - max).append(" món khác");
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String formatMoney(BigDecimal amount) {
+        if (amount == null) return "";
+        return String.format("%,.0fđ", amount.doubleValue());
+    }
+
+    private String translatePaymentMethod(String m) {
+        if (m == null) return "";
+        switch (m.toUpperCase()) {
+            case "CASH": return "Tiền mặt";
+            case "BANK_TRANSFER": return "Chuyển khoản";
+            default: return m;
+        }
+    }
+
+    // ===== RESERVATION lifecycle (sau khi đã tạo) =====
+    private String extractReservationActionDetails(String actionType, String uri) {
+        // ID trong URL có thể là reservationCode (string) hoặc numeric
+        String code = null;
+        if (uri != null) {
+            String[] parts = uri.split("/");
+            // Pattern: /api/reservation/{code}/action → code là part[3]
+            if (parts.length >= 4) code = parts[3];
+        }
+        String suffix = code != null && !code.isEmpty() ? " #" + code : "";
+        switch (actionType) {
+            case "RESERVATION_CONFIRM":          return "Xác nhận đặt bàn" + suffix;
+            case "RESERVATION_CHECKIN":          return "Check-in đặt bàn" + suffix;
+            case "RESERVATION_CANCEL":           return "Hủy đặt bàn" + suffix;
+            case "RESERVATION_EMAIL_SEND":       return "Gửi email xác nhận đặt bàn" + suffix;
+            case "RESERVATION_TABLE_REASSIGN":   return "Chuyển bàn cho đặt bàn" + suffix;
+            default: return "Thao tác đặt bàn" + suffix;
+        }
+    }
+
+    // ===== WALK-IN =====
+    private String extractWalkinActionDetails(String actionType, String uri, Object requestBody) {
+        String code = extractEntityIdFromUri(uri);
+        String suffix = code != null ? " #" + code : "";
+        Integer guestCount = safeInvokeMethod(requestBody, "getGuestCount", Integer.class);
+        String customerName = safeInvokeMethod(requestBody, "getCustomerName", String.class);
+        switch (actionType) {
+            case "WALKIN_CHECKIN": {
+                StringBuilder sb = new StringBuilder("Check-in khách walk-in");
+                if (guestCount != null) sb.append(" cho ").append(guestCount).append(" người");
+                if (customerName != null && !customerName.isEmpty()) sb.append(" - KH: ").append(customerName);
+                return sb.toString();
+            }
+            case "WALKIN_CANCEL": return "Hủy bàn walk-in" + suffix;
+            default: return "Thao tác walk-in" + suffix;
+        }
+    }
+
+    // ===== AUTH =====
+    private String extractAuthActionDetails(String actionType, Object requestBody) {
+        String email = safeInvokeMethod(requestBody, "getEmail", String.class);
+        String emailSuffix = email != null && !email.isEmpty() ? " - " + email : "";
+        switch (actionType) {
+            case "REGISTER_START":    return "Bắt đầu đăng ký tài khoản" + emailSuffix;
+            case "REGISTER_OTP_SEND": return "Gửi mã OTP xác nhận" + emailSuffix;
+            case "REGISTER_VERIFY":   return "Hoàn tất đăng ký (xác nhận OTP)" + emailSuffix;
+            case "LOGOUT":            return "Đăng xuất khỏi hệ thống";
+            default: return "Thao tác xác thực";
+        }
+    }
+
+    // ===== CUSTOMER specific =====
+    private String extractCustomerActionDetails(String actionType, String uri, Object requestBody) {
+        String customerId = extractEntityIdFromUri(uri);
+        String suffix = customerId != null ? " #" + customerId : "";
+        Boolean isActive = safeInvokeMethod(requestBody, "getIsActive", Boolean.class);
+        switch (actionType) {
+            case "CUSTOMER_STATUS_CHANGE":
+                return "Thay đổi trạng thái khách hàng" + suffix
+                        + (isActive != null ? (isActive ? " - Kích hoạt" : " - Vô hiệu hóa") : "");
+            case "CUSTOMER_PASSWORD_CHANGE":
+                return "Đổi mật khẩu" + suffix;
+            default:
+                return "Thao tác khách hàng" + suffix;
+        }
+    }
+
+    // ===== QUERY BUILDER =====
+    private String extractQueryBuilderDetails(String actionType, String uri, Object requestBody) {
+        String id = extractEntityIdFromUri(uri);
+        String name = safeInvokeMethod(requestBody, "getName", String.class);
+        String question = safeInvokeMethod(requestBody, "getQuestion", String.class);
+        String sqlQuery = safeInvokeMethod(requestBody, "getSqlQuery", String.class);
+
+        switch (actionType) {
+            case "QUERY_EXECUTE": {
+                StringBuilder sb = new StringBuilder("Thực thi custom query");
+                if (sqlQuery != null) sb.append(": \"").append(truncate(sqlQuery, 120)).append("\"");
+                return sb.toString();
+            }
+            case "QUERY_AI_GENERATE":
+                return "Sinh SQL từ ngôn ngữ tự nhiên" + (question != null ? " - Câu hỏi: \"" + truncate(question, 100) + "\"" : "");
+            case "SAVED_QUERY_CREATE":
+                return "Lưu query mới" + (name != null ? ": \"" + truncate(name, 80) + "\"" : "");
+            case "SAVED_QUERY_UPDATE":
+                return "Cập nhật saved query" + (id != null ? " #" + id : "") + (name != null ? ": \"" + truncate(name, 80) + "\"" : "");
+            case "SAVED_QUERY_DELETE":
+                return "Xóa saved query" + (id != null ? " #" + id : "");
+            case "DASHBOARD_CREATE":
+                return "Tạo dashboard" + (name != null ? ": \"" + truncate(name, 80) + "\"" : "");
+            case "DASHBOARD_UPDATE":
+                return "Cập nhật dashboard" + (id != null ? " #" + id : "");
+            case "DASHBOARD_DELETE":
+                return "Xóa dashboard" + (id != null ? " #" + id : "");
+            case "DASHBOARD_LAYOUT_SAVE":
+                return "Lưu layout dashboard" + (id != null ? " #" + id : "");
+            case "DASHBOARD_WIDGET_REMOVE":
+                return "Xóa widget khỏi dashboard" + (id != null ? " #" + id : "");
+            default:
+                return "Thao tác query builder";
+        }
     }
     
     /**
@@ -339,18 +782,6 @@ public class AutoAuditAspect {
     /**
      * Translate payment method to Vietnamese
      */
-    private String translatePaymentMethod(String method) {
-        if (method == null) return "";
-        switch (method.toUpperCase()) {
-            case "CASH": return "Tiền mặt";
-            case "BANK_TRANSFER": return "Chuyển khoản";
-            case "CREDIT_CARD": return "Thẻ tín dụng";
-            case "MOMO": return "MoMo";
-            case "VNPAY": return "VNPay";
-            default: return method;
-        }
-    }
-    
     /**
      * Extract order details
      */
@@ -912,25 +1343,191 @@ public class AutoAuditAspect {
     }
 
     private String determineActionType(Method method, HttpServletRequest request) {
-        if (method.isAnnotationPresent(PostMapping.class)) {
-            return "CREATE";
-        } else if (method.isAnnotationPresent(PutMapping.class) || method.isAnnotationPresent(PatchMapping.class)) {
-            return "UPDATE";
-        } else if (method.isAnnotationPresent(DeleteMapping.class)) {
-            return "DELETE";
+        String uri = request.getRequestURI();
+        if (uri == null) return httpVerbFallback(method, request);
+
+        // ===== Blog =====
+        if (uri.startsWith("/api/blog/admin")) {
+            if (uri.endsWith("/ai-generate")) return "BLOG_AI_GENERATE";
+            if (uri.endsWith("/disable")) return "BLOG_DISABLE";
+            if (uri.endsWith("/restore")) return "BLOG_RESTORE";
+            if (uri.endsWith("/permanent")) return "BLOG_HARD_DELETE";
+            if (method.isAnnotationPresent(PostMapping.class)) return "BLOG_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "BLOG_UPDATE";
         }
+
+        // ===== Auth =====
+        if (uri.startsWith("/api/auth/")) {
+            if (uri.contains("/login")) return "LOGIN";
+            if (uri.contains("/logout")) return "LOGOUT";
+            if (uri.contains("/register")) return "REGISTER_START";
+            if (uri.contains("/otp/send")) return "REGISTER_OTP_SEND";
+            if (uri.contains("/otp/verify")) return "REGISTER_VERIFY";
+        }
+
+        // ===== Customer =====
+        if (uri.startsWith("/api/customers")) {
+            if (uri.contains("/status")) return "CUSTOMER_STATUS_CHANGE";
+            if (uri.contains("/change-password")) return "CUSTOMER_PASSWORD_CHANGE";
+            if (uri.contains("/profile")) return "CUSTOMER_PROFILE_UPDATE";
+        }
+
+        // ===== Employee =====
+        if (uri.startsWith("/api/employees")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "EMPLOYEE_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "EMPLOYEE_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "EMPLOYEE_DISABLE";
+        }
+
+        // ===== Reservation =====
+        if (uri.startsWith("/api/reservation")) {
+            if (uri.contains("/check-in")) return "RESERVATION_CHECKIN";
+            if (uri.contains("/send-email")) return "RESERVATION_EMAIL_SEND";
+            if (uri.contains("/cancel")) return "RESERVATION_CANCEL";
+            if (uri.contains("/confirm")) return "RESERVATION_CONFIRM";
+            if (uri.contains("/reassign-tables")) return "RESERVATION_TABLE_REASSIGN";
+            if (method.isAnnotationPresent(PostMapping.class)) return "RESERVATION_CREATE";
+        }
+
+        // ===== Walk-in =====
+        if (uri.startsWith("/api/walk-in")) {
+            if (uri.contains("/check-in")) return "WALKIN_CHECKIN";
+            if (uri.contains("/cancel")) return "WALKIN_CANCEL";
+        }
+
+        // ===== Invoice / Payment =====
+        if (uri.startsWith("/api/reception/payment")) {
+            if (uri.contains("/checkout")) return "PAYMENT_CHECKOUT";
+            if (uri.contains("/cancel")) return "PAYMENT_CANCEL";
+            if (uri.contains("/add-item")) return "INVOICE_ITEM_ADD";
+            if (uri.contains("/items/") && method.isAnnotationPresent(PatchMapping.class)) return "INVOICE_ITEM_UPDATE";
+            if (uri.contains("/items/") && method.isAnnotationPresent(DeleteMapping.class)) return "INVOICE_ITEM_REMOVE";
+        }
+        if (uri.startsWith("/public/notification/send/")) return "PAYMENT_QR_NOTIFY";
+
+        // ===== Kitchen =====
+        if (uri.startsWith("/api/kitchen/items/")) {
+            if (uri.endsWith("/start")) return "KITCHEN_ITEM_START";
+            if (uri.endsWith("/done")) return "KITCHEN_ITEM_DONE";
+            if (uri.endsWith("/serve")) return "KITCHEN_ITEM_SERVE";
+            if (uri.endsWith("/cancel")) return "KITCHEN_ITEM_CANCEL";
+        }
+        if (uri.startsWith("/api/invoices/items/") && uri.endsWith("/activate")) return "KITCHEN_ITEM_ACTIVATE";
+        if ((uri.matches("/api/invoices/\\d+/order-items") || uri.matches("/api/tables/\\d+/order-items"))
+                && method.isAnnotationPresent(PostMapping.class)) return "INVOICE_ORDER_ADD_ITEMS";
+
+        // ===== Product =====
+        if (uri.startsWith("/api/products")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "PRODUCT_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "PRODUCT_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "PRODUCT_DISABLE";
+        }
+
+        // ===== Combo =====
+        if (uri.startsWith("/api/product-combos")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "COMBO_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "COMBO_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "COMBO_DISABLE";
+        }
+        if (uri.startsWith("/api/product-combo-items")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "COMBO_ITEM_ADD";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "COMBO_ITEMS_CLEAR";
+        }
+
+        // ===== Voucher (3 types) =====
+        if (uri.startsWith("/api/product-vouchers")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "PRODUCT_VOUCHER_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "PRODUCT_VOUCHER_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "PRODUCT_VOUCHER_DISABLE";
+        }
+        if (uri.startsWith("/api/product-combo-vouchers")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "COMBO_VOUCHER_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "COMBO_VOUCHER_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "COMBO_VOUCHER_DISABLE";
+        }
+        if (uri.startsWith("/api/customer-vouchers")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "CUSTOMER_VOUCHER_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "CUSTOMER_VOUCHER_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "CUSTOMER_VOUCHER_DELETE";
+        }
+
+        // ===== Dining Table =====
+        if (uri.startsWith("/api/tables") && !uri.contains("/order-items")) {
+            if (method.isAnnotationPresent(PostMapping.class)) return "TABLE_CREATE";
+            if (method.isAnnotationPresent(PutMapping.class)) return "TABLE_UPDATE";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "TABLE_DELETE";
+        }
+
+        // ===== Review / Feedback =====
+        if (uri.startsWith("/api/reviews")) {
+            if (uri.contains("/approve")) return "REVIEW_APPROVE";
+            if (uri.contains("/reject")) return "REVIEW_REJECT";
+            if (method.isAnnotationPresent(DeleteMapping.class)) return "REVIEW_DELETE";
+            if (method.isAnnotationPresent(PostMapping.class)) return "REVIEW_CREATE";
+        }
+
+        // ===== Query Builder =====
+        if (uri.startsWith("/api/query-builder")) {
+            if (uri.endsWith("/execute")) return "QUERY_EXECUTE";
+            if (uri.contains("/ai/generate-sql")) return "QUERY_AI_GENERATE";
+            if (uri.contains("/saved-queries")) {
+                if (method.isAnnotationPresent(PostMapping.class)) return "SAVED_QUERY_CREATE";
+                if (method.isAnnotationPresent(PutMapping.class)) return "SAVED_QUERY_UPDATE";
+                if (method.isAnnotationPresent(DeleteMapping.class)) return "SAVED_QUERY_DELETE";
+            }
+            if (uri.contains("/dashboards/") && uri.contains("/layouts/")
+                    && method.isAnnotationPresent(DeleteMapping.class)) return "DASHBOARD_WIDGET_REMOVE";
+            if (uri.contains("/dashboards/") && uri.contains("/layouts")) return "DASHBOARD_LAYOUT_SAVE";
+            if (uri.contains("/dashboards")) {
+                if (method.isAnnotationPresent(PostMapping.class)) return "DASHBOARD_CREATE";
+                if (method.isAnnotationPresent(PutMapping.class)) return "DASHBOARD_UPDATE";
+                if (method.isAnnotationPresent(DeleteMapping.class)) return "DASHBOARD_DELETE";
+            }
+        }
+
+        return httpVerbFallback(method, request);
+    }
+
+    private String httpVerbFallback(Method method, HttpServletRequest request) {
+        if (method.isAnnotationPresent(PostMapping.class)) return "CREATE";
+        if (method.isAnnotationPresent(PutMapping.class) || method.isAnnotationPresent(PatchMapping.class)) return "UPDATE";
+        if (method.isAnnotationPresent(DeleteMapping.class)) return "DELETE";
         return request.getMethod();
     }
 
+    /**
+     * Extract entity ID from URI — tìm segment số trong path.
+     * VD: /api/blog/admin/123/disable → "123"
+     */
+    private String extractEntityIdFromUri(String uri) {
+        if (uri == null) return null;
+        String[] parts = uri.split("/");
+        for (String p : parts) {
+            if (p.matches("\\d+")) return p;
+        }
+        return null;
+    }
+
     private String determineEntityType(String uri) {
-        // Extract entity type from URI
-        // e.g., /api/products -> Product, /api/invoices -> Invoice
         if (uri == null) return "";
-        
+
+        // Override: đồng nhất entity type — quan trọng cho tra cứu truy vết tranh chấp
+        // Các URL khác nhau nhưng cùng tác động lên 1 loại đối tượng → gom về 1 entityType chung
+        if (uri.startsWith("/api/reception/payment")) return "Invoice";
+        if (uri.startsWith("/api/invoices")) return "Invoice";
+        if (uri.startsWith("/api/kitchen")) return "Invoice";
+        if (uri.matches("/api/tables/\\d+/order-items.*")) return "Invoice";
+        if (uri.startsWith("/public/notification/send")) return "Invoice";
+
+        if (uri.startsWith("/api/reservation")) return "Reservation";
+        if (uri.startsWith("/api/walk-in")) return "WalkIn";
+        if (uri.startsWith("/api/blog")) return "Blog";
+        if (uri.startsWith("/api/auth")) return "Auth";
+
+        // Default: parse từ URI path (vd /api/products → Product)
         String[] parts = uri.split("/");
         if (parts.length >= 3) {
             String entity = parts[2];
-            // Convert plural to singular and capitalize
             if (entity.endsWith("ies")) {
                 entity = entity.substring(0, entity.length() - 3) + "y";
             } else if (entity.endsWith("s")) {
@@ -1074,27 +1671,80 @@ public class AutoAuditAspect {
 
     private String translateEntity(String entityType) {
         if (entityType == null || entityType.isEmpty()) return "";
-        
+
         switch (entityType.toLowerCase()) {
             case "product": return "sản phẩm";
+            case "product-combo":
             case "combo": return "combo";
             case "invoice": return "hóa đơn";
             case "customer": return "khách hàng";
             case "employee": return "nhân viên";
             case "table": return "bàn ăn";
             case "reservation": return "đặt bàn";
-            case "voucher": return "voucher";
+            case "walk-in":
+            case "walkin": return "walk-in";
+            case "voucher":
+            case "product-voucher":
+            case "customer-voucher":
+            case "product-combo-voucher": return "voucher";
             case "review": return "đánh giá";
+            case "blog": return "bài viết";
+            case "query-builder": return "query builder";
+            case "kitchen": return "bếp";
+            case "auth": return "tài khoản";
             default: return entityType;
         }
     }
 
+    /**
+     * Map action type → severity. Quy tắc:
+     * - CRITICAL: thanh toán, hủy thanh toán, xóa cứng, đổi mật khẩu/role
+     * - WARNING:  cancel, disable, delete soft, reject — tác động dữ liệu có thể khôi phục
+     * - ERROR:    LOGIN_FAILED, exception (set bởi catch block)
+     * - INFO:     create, update, state transition bình thường
+     */
     private String determineSeverity(String actionType) {
+        if (actionType == null) return "INFO";
         switch (actionType) {
-            case "DELETE": return "WARNING";
-            case "CREATE":
-            case "UPDATE": return "INFO";
-            default: return "INFO";
+            // CRITICAL — tiền bạc & bảo mật
+            case "PAYMENT_CHECKOUT":
+            case "PAYMENT_CANCEL":
+            case "BLOG_HARD_DELETE":
+            case "CUSTOMER_PASSWORD_CHANGE":
+            case "PASSWORD_CHANGE":
+            case "CUSTOMER_STATUS_CHANGE":
+            case "EMPLOYEE_DISABLE":
+                return "CRITICAL";
+
+            // ERROR
+            case "LOGIN_FAILED":
+                return "ERROR";
+
+            // WARNING — tác động dữ liệu có thể khôi phục
+            case "DELETE":
+            case "RESERVATION_CANCEL":
+            case "WALKIN_CANCEL":
+            case "KITCHEN_ITEM_CANCEL":
+            case "INVOICE_ITEM_REMOVE":
+            case "BLOG_DISABLE":
+            case "PRODUCT_DISABLE":
+            case "COMBO_DISABLE":
+            case "PRODUCT_VOUCHER_DISABLE":
+            case "COMBO_VOUCHER_DISABLE":
+            case "CUSTOMER_VOUCHER_DELETE":
+            case "TABLE_DELETE":
+            case "REVIEW_REJECT":
+            case "REVIEW_DELETE":
+            case "SAVED_QUERY_DELETE":
+            case "DASHBOARD_DELETE":
+            case "DASHBOARD_WIDGET_REMOVE":
+            case "COMBO_ITEMS_CLEAR":
+            case "QUERY_EXECUTE":
+                return "WARNING";
+
+            // INFO — bình thường
+            default:
+                return "INFO";
         }
     }
 }

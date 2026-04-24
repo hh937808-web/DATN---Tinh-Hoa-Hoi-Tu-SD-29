@@ -68,21 +68,22 @@ public class EmployeeService {
 
         Employee emp = getById(id);
 
+        // AUDIT DIFF — snapshot BEFORE modification (không capture password vì nhạy cảm)
+        java.util.Map<String, Object> before = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                emp, "fullName", "username", "role", "gender", "address", "phoneNumber", "email", "isActive"
+        );
+
         emp.setFullName(request.getFullName());
         emp.setUsername(request.getUsername());
-        
+
         // Only update password if it's provided and different from current hash
-        // This prevents overwriting hashed password with plain text
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            // Check if password is already hashed (BCrypt format starts with $2a$ or $2b$)
             String newPassword = request.getPassword();
             if (!newPassword.startsWith("$2a$") && !newPassword.startsWith("$2b$")) {
-                // Password is plain text, need to hash it
                 emp.setPassword(passwordEncoder.encode(newPassword));
             }
-            // If already hashed, don't update (keep existing hash)
         }
-        
+
         emp.setRole(request.getRole());
         emp.setGender(request.getGender());
         emp.setAddress(request.getAddress());
@@ -90,8 +91,29 @@ public class EmployeeService {
         emp.setEmail(request.getEmail());
         emp.setIsActive(request.getIsActive());
 
-        return employeeRepository.save(emp);
+        Employee saved = employeeRepository.save(emp);
+
+        // AUDIT DIFF — diff trước/sau
+        java.util.Map<String, Object> after = com.example.datn_sd_29.audit.util.AuditDiffUtil.snapshot(
+                saved, "fullName", "username", "role", "gender", "address", "phoneNumber", "email", "isActive"
+        );
+        com.example.datn_sd_29.audit.context.AuditContext.setChanges(
+                com.example.datn_sd_29.audit.util.AuditDiffUtil.diff(before, after, EMPLOYEE_FIELD_LABELS)
+        );
+
+        return saved;
     }
+
+    private static final java.util.Map<String, String> EMPLOYEE_FIELD_LABELS = java.util.Map.of(
+            "fullName", "Họ tên",
+            "username", "Tài khoản",
+            "role", "Vai trò",
+            "gender", "Giới tính",
+            "address", "Địa chỉ",
+            "phoneNumber", "Số điện thoại",
+            "email", "Email",
+            "isActive", "Trạng thái hoạt động"
+    );
 
     // ====== DELETE / KHÓA ======
     public void delete(Integer id) {

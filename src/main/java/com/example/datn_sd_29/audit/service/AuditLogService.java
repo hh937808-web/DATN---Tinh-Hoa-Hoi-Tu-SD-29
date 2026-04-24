@@ -120,12 +120,13 @@ public class AuditLogService {
      * Search audit logs with filters
      */
     public Page<AuditLogResponse> searchAuditLogs(AuditLogSearchRequest searchRequest) {
-        Sort sort = Sort.by(
-                "DESC".equalsIgnoreCase(searchRequest.getSortDirection()) 
-                        ? Sort.Direction.DESC 
-                        : Sort.Direction.ASC,
-                searchRequest.getSortBy()
-        );
+        // Khi trace theo entity cụ thể → sort ASC (timeline chronological, dễ dựng lại câu chuyện)
+        boolean isEntityTrace = searchRequest.getEntityType() != null && !searchRequest.getEntityType().isEmpty()
+                && searchRequest.getEntityId() != null && !searchRequest.getEntityId().isEmpty();
+        Sort.Direction direction = isEntityTrace
+                ? Sort.Direction.ASC
+                : ("DESC".equalsIgnoreCase(searchRequest.getSortDirection()) ? Sort.Direction.DESC : Sort.Direction.ASC);
+        Sort sort = Sort.by(direction, searchRequest.getSortBy());
         
         Pageable pageable = PageRequest.of(
                 searchRequest.getPage(), 
@@ -136,6 +137,18 @@ public class AuditLogService {
         // Build dynamic query using MongoTemplate for complex filtering
         Query query = new Query();
         
+        // Keyword search — tìm từ khóa trong mô tả, tài khoản, tên đầy đủ, mã đối tượng
+        if (searchRequest.getKeyword() != null && !searchRequest.getKeyword().trim().isEmpty()) {
+            String kw = searchRequest.getKeyword().trim();
+            String escaped = java.util.regex.Pattern.quote(kw);
+            query.addCriteria(new Criteria().orOperator(
+                    Criteria.where("actionDescription").regex(escaped, "i"),
+                    Criteria.where("userEmail").regex(escaped, "i"),
+                    Criteria.where("userFullName").regex(escaped, "i"),
+                    Criteria.where("entityId").regex(escaped, "i")
+            ));
+        }
+
         if (searchRequest.getUserEmail() != null && !searchRequest.getUserEmail().isEmpty()) {
             query.addCriteria(Criteria.where("userEmail").is(searchRequest.getUserEmail()));
         }
@@ -144,18 +157,30 @@ public class AuditLogService {
         }
         if (searchRequest.getActionType() != null && !searchRequest.getActionType().isEmpty()) {
             query.addCriteria(Criteria.where("actionType").is(searchRequest.getActionType()));
+        } else if (searchRequest.getActionCategory() != null && !searchRequest.getActionCategory().isEmpty()) {
+            // Category filter — regex match trên actionType (vd: "CREATE" → mọi action có "CREATE" trong tên)
+            String escaped = java.util.regex.Pattern.quote(searchRequest.getActionCategory());
+            query.addCriteria(Criteria.where("actionType").regex(escaped));
         }
         if (searchRequest.getEntityType() != null && !searchRequest.getEntityType().isEmpty()) {
             query.addCriteria(Criteria.where("entityType").is(searchRequest.getEntityType()));
         }
+        if (searchRequest.getEntityId() != null && !searchRequest.getEntityId().isEmpty()) {
+            query.addCriteria(Criteria.where("entityId").is(searchRequest.getEntityId()));
+        }
         if (searchRequest.getSeverity() != null && !searchRequest.getSeverity().isEmpty()) {
             query.addCriteria(Criteria.where("severity").is(searchRequest.getSeverity()));
         }
-        if (searchRequest.getStartDate() != null) {
-            query.addCriteria(Criteria.where("createdAt").gte(searchRequest.getStartDate()));
-        }
-        if (searchRequest.getEndDate() != null) {
-            query.addCriteria(Criteria.where("createdAt").lte(searchRequest.getEndDate()));
+        // Gộp range createdAt vào 1 criteria — MongoDB không cho thêm 2 criteria cùng 1 field riêng lẻ
+        if (searchRequest.getStartDate() != null || searchRequest.getEndDate() != null) {
+            Criteria dateCriteria = Criteria.where("createdAt");
+            if (searchRequest.getStartDate() != null) {
+                dateCriteria = dateCriteria.gte(searchRequest.getStartDate());
+            }
+            if (searchRequest.getEndDate() != null) {
+                dateCriteria = dateCriteria.lte(searchRequest.getEndDate());
+            }
+            query.addCriteria(dateCriteria);
         }
         
         query.with(pageable);
@@ -250,6 +275,9 @@ public class AuditLogService {
      * Build AuditLog entity from request
      */
     private AuditLogDocument buildAuditLog(AuditLogRequest request) {
+        Instant now = Instant.now();
+        Instant expiresAt = now.plus(computeRetention(request.getActionType()));
+
         return AuditLogDocument.builder()
                 .userEmail(request.getUserEmail())
                 .userRole(request.getUserRole())
@@ -268,8 +296,42 @@ public class AuditLogService {
                 .responseMessage(request.getResponseMessage())
                 .severity(request.getSeverity() != null ? request.getSeverity() : "INFO")
                 .executionTimeMs(request.getExecutionTimeMs())
-                .createdAt(Instant.now())
+                .changes(request.getChanges())
+                .createdAt(now)
+                .expiresAt(expiresAt)
                 .build();
+    }
+
+    /**
+     * Retention policy theo loại action — tuân thủ pháp luật & best practice:
+     *  - Tài chính/hoá đơn: 10 năm (Luật Kế toán 88/2015 yêu cầu lưu chứng từ tối thiểu 10 năm)
+     *  - Bảo mật/nhạy cảm : 1 năm (đăng nhập thất bại, đổi mật khẩu, vô hiệu hóa, xóa cứng)
+     *  - Nghiệp vụ thường : 90 ngày (CRUD blog, product, table...)
+     */
+    private java.time.Duration computeRetention(String actionType) {
+        if (actionType == null) return java.time.Duration.ofDays(90);
+
+        // Tài chính — giữ 10 năm
+        if (actionType.startsWith("PAYMENT_")
+                || actionType.startsWith("INVOICE_")
+                || actionType.startsWith("KITCHEN_ITEM_")
+                || actionType.equals("INVOICE_ORDER_ADD_ITEMS")) {
+            return java.time.Duration.ofDays(365L * 10);
+        }
+
+        // Bảo mật & hành vi nhạy cảm — giữ 1 năm
+        if (actionType.equals("LOGIN_FAILED")
+                || actionType.contains("PASSWORD")
+                || actionType.endsWith("_HARD_DELETE")
+                || actionType.endsWith("_DISABLE")
+                || actionType.endsWith("_CANCEL")
+                || actionType.equals("EMPLOYEE_DISABLE")
+                || actionType.equals("CUSTOMER_STATUS_CHANGE")) {
+            return java.time.Duration.ofDays(365);
+        }
+
+        // Mặc định
+        return java.time.Duration.ofDays(90);
     }
 
     /**
@@ -296,6 +358,7 @@ public class AuditLogService {
                 .createdAt(auditLog.getCreatedAt())
                 .severity(auditLog.getSeverity())
                 .executionTimeMs(auditLog.getExecutionTimeMs())
+                .changes(auditLog.getChanges())
                 .build();
     }
 }

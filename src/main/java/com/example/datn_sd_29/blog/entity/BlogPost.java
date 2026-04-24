@@ -65,4 +65,12 @@ public class BlogPost {
 
     @Column(name = "expires_at")
     private Instant expiresAt;
+
+    @Column(name = "disabled_at")
+    private Instant disabledAt;
+
+    @Size(max = 200)
+    @Nationalized
+    @Column(name = "disabled_by", length = 200)
+    private String disabledBy;
 }

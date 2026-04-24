@@ -18,8 +18,10 @@ public class BlogPostResponse {
     private Boolean isPublished;
     private Integer viewCount;
 
-    // Trạng thái tổng hợp: DRAFT | SCHEDULED | PUBLISHED | EXPIRED
+    // Trạng thái tổng hợp: DRAFT | SCHEDULED | PUBLISHED | EXPIRED | DISABLED
     private String status;
+
+    private String disabledBy;
 
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant createdAt;
@@ -36,6 +38,9 @@ public class BlogPostResponse {
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
     private Instant expiresAt;
 
+    @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss", timezone = "Asia/Ho_Chi_Minh")
+    private Instant disabledAt;
+
     public BlogPostResponse(BlogPost post) {
         this.id = post.getId();
         this.title = post.getTitle();
@@ -51,10 +56,15 @@ public class BlogPostResponse {
         this.publishedAt = post.getPublishedAt();
         this.scheduledPublishAt = post.getScheduledPublishAt();
         this.expiresAt = post.getExpiresAt();
+        this.disabledAt = post.getDisabledAt();
+        this.disabledBy = post.getDisabledBy();
         this.status = computeStatus(post);
     }
 
     private static String computeStatus(BlogPost post) {
+        if (post.getDisabledAt() != null) {
+            return "DISABLED";
+        }
         Instant now = Instant.now();
         if (post.getExpiresAt() != null && post.getExpiresAt().isBefore(now)) {
             return "EXPIRED";
