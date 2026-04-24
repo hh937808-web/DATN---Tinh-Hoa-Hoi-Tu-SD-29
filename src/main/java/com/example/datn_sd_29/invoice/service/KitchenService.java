@@ -92,7 +92,8 @@ public class KitchenService {
                     itemName,
                     item.getQuantity(),
                     item.getStatus().name(),
-                    item.getItemType()
+                    item.getItemType(),
+                    item.getNote()
             );
 
             map.get(tableId).getItems().add(response);

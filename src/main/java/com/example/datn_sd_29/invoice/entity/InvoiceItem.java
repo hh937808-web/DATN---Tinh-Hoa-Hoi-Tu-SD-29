@@ -64,4 +64,8 @@ public class InvoiceItem {
 
     @Column(name = "applied_voucher_discount", precision = 18, scale = 2)
     private BigDecimal appliedVoucherDiscount;
+
+    @Size(max = 500)
+    @Column(name = "note", length = 500)
+    private String note;
 }

@@ -376,6 +376,12 @@ public class StaffOrderService {
             invoiceItem.setDiningTable(diningTable);
             invoiceItem.setStatus(InvoiceItemStatus.ORDERED);
 
+            String note = item.getNote();
+            if (note != null) {
+                note = note.trim();
+                invoiceItem.setNote(note.isEmpty() ? null : note);
+            }
+
             if ("PRODUCT".equals(type)) {
                 if (item.getProductId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productId is required");
@@ -488,6 +494,12 @@ public class StaffOrderService {
             invoiceItem.setQuantity(item.getQuantity());
             invoiceItem.setDiningTable(diningTable);
             invoiceItem.setStatus(InvoiceItemStatus.ORDERED);
+
+            String note = item.getNote();
+            if (note != null) {
+                note = note.trim();
+                invoiceItem.setNote(note.isEmpty() ? null : note);
+            }
 
             if ("PRODUCT".equals(type)) {
                 if (item.getProductId() == null) {

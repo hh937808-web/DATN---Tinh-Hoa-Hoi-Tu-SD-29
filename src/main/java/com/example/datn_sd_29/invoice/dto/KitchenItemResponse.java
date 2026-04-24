@@ -13,4 +13,5 @@ public class KitchenItemResponse {
     private Integer quantity;
     private String status;   // 🔥 bắt buộc
     private String itemType; // 🔥 nên có
+    private String note;     // Ghi chú của khách (không cay, ít muối, dị ứng...)
 }
