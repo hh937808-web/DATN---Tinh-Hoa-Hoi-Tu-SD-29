@@ -34,6 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -375,6 +376,7 @@ public class StaffOrderService {
             invoiceItem.setQuantity(item.getQuantity());
             invoiceItem.setDiningTable(diningTable);
             invoiceItem.setStatus(InvoiceItemStatus.ORDERED);
+            invoiceItem.setOrderedAt(Instant.now());
 
             String note = item.getNote();
             if (note != null) {
@@ -494,6 +496,7 @@ public class StaffOrderService {
             invoiceItem.setQuantity(item.getQuantity());
             invoiceItem.setDiningTable(diningTable);
             invoiceItem.setStatus(InvoiceItemStatus.ORDERED);
+            invoiceItem.setOrderedAt(Instant.now());
 
             String note = item.getNote();
             if (note != null) {

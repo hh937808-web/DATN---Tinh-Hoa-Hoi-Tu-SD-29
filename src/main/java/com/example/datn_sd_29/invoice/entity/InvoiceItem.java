@@ -10,6 +10,7 @@ import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -68,4 +69,7 @@ public class InvoiceItem {
     @Size(max = 500)
     @Column(name = "note", length = 500)
     private String note;
+
+    @Column(name = "ordered_at")
+    private Instant orderedAt;
 }
