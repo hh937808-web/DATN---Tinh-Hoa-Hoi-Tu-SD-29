@@ -83,9 +83,11 @@ public class ReservationController {
 
     @PostMapping("/{invoiceId}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancelReservation(
-            @PathVariable Integer invoiceId
+            @PathVariable Integer invoiceId,
+            @RequestParam(name = "cancelledByStaff", required = false, defaultValue = "false")
+            boolean cancelledByStaff
     ) {
-        reservationService.cancelReservation(invoiceId);
+        reservationService.cancelReservation(invoiceId, cancelledByStaff);
         return ResponseEntity.ok(ApiResponse.success("Đã hủy đặt bàn thành công", null));
     }
 

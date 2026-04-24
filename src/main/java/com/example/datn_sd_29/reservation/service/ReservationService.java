@@ -367,21 +367,31 @@ public class ReservationService {
                 .collect(Collectors.toList());
     }
 
+    // Overload giữ tương thích: mặc định coi là khách tự hủy (không truyền flag)
     public void cancelReservation(Integer invoiceId) {
+        cancelReservation(invoiceId, false);
+    }
+
+    /**
+     * Hủy đơn đặt bàn.
+     * @param cancelledByStaff true nếu staff/lễ tân/admin chủ động hủy hộ khách
+     *                         → emit STAFF_CANCELLED thay vì CUSTOMER_CANCELLED
+     */
+    public void cancelReservation(Integer invoiceId, boolean cancelledByStaff) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đặt bàn"));
 
         String status = invoice.getInvoiceStatus();
-        
+
         // Allow cancellation for PENDING_CONFIRMATION and RESERVED only
         if (!"PENDING_CONFIRMATION".equals(status) && !"RESERVED".equals(status)) {
             throw new IllegalArgumentException("Chỉ có thể hủy đặt bàn có trạng thái PENDING_CONFIRMATION hoặc RESERVED");
         }
 
         // Get tables before cancelling (may be empty for PENDING_CONFIRMATION)
-        List<InvoiceDiningTable> links = 
+        List<InvoiceDiningTable> links =
             invoiceDiningTableRepository.findByInvoiceIdWithTable(invoice.getId());
-        
+
         List<Integer> tableIds = links.stream()
                 .map(link -> link.getDiningTable().getId())
                 .collect(Collectors.toList());
@@ -406,6 +416,11 @@ public class ReservationService {
                     .map(l -> l.getDiningTable().getTableName())
                     .collect(Collectors.joining(", "));
 
+            String notificationType = cancelledByStaff ? "STAFF_CANCELLED" : "CUSTOMER_CANCELLED";
+            String message = cancelledByStaff
+                    ? "Nhân viên đã hủy đơn đặt bàn hộ khách"
+                    : "Khách hàng đã tự hủy đơn đặt bàn";
+
             java.util.Map<String, Object> notification = new java.util.HashMap<>();
             notification.put("reservationCode", invoice.getReservationCode());
             notification.put("customerName", customer != null ? customer.getFullName() : "");
@@ -414,11 +429,11 @@ public class ReservationService {
             notification.put("tableNames", tableNames.isEmpty() ? "Chưa xếp bàn" : tableNames);
             notification.put("guestCount", invoice.getGuestCount());
             notification.put("detectedAt", java.time.Instant.now().toString());
-            notification.put("notificationType", "CUSTOMER_CANCELLED");
-            notification.put("message", "Khách hàng đã tự hủy đơn đặt bàn");
+            notification.put("notificationType", notificationType);
+            notification.put("message", message);
 
             messagingTemplate.convertAndSend("/topic/noshow", notification);
-            log.info("Sent cancel notification for reservation {}", invoice.getReservationCode());
+            log.info("Sent cancel notification ({}) for reservation {}", notificationType, invoice.getReservationCode());
         } catch (Exception e) {
             log.warn("Failed to send cancel notification: {}", e.getMessage());
         }
