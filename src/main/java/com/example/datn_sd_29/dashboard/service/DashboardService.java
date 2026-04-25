@@ -115,7 +115,8 @@ public class DashboardService {
             });
         
         Long occupiedTables = (long) occupiedTableIds.size();
-        Long totalTables = diningTableRepository.count();
+        // Chỉ đếm bàn đang phục vụ — loại OUT_OF_SERVICE (bàn đã ngưng phục vụ)
+        Long totalTables = diningTableRepository.countByTableStatusNot("OUT_OF_SERVICE");
 
         DashboardStatsResponse response = new DashboardStatsResponse();
         
@@ -301,8 +302,11 @@ public class DashboardService {
         Instant now = Instant.now();
         ZoneId zoneId = ZoneId.systemDefault();
         
-        // Get all tables
-        List<com.example.datn_sd_29.dining_table.entity.DiningTable> allTables = diningTableRepository.findAll();
+        // Lấy danh sách bàn đang phục vụ — loại bỏ bàn đã ngưng hoạt động (OUT_OF_SERVICE)
+        List<com.example.datn_sd_29.dining_table.entity.DiningTable> allTables =
+                diningTableRepository.findAll().stream()
+                        .filter(t -> !"OUT_OF_SERVICE".equals(t.getTableStatus()))
+                        .collect(Collectors.toList());
         
         // Get all active invoices (RESERVED and IN_PROGRESS)
         List<Invoice> activeInvoices = invoiceRepository.findAll().stream()
