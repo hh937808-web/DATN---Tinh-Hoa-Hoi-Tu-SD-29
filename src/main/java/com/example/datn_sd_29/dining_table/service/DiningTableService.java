@@ -33,27 +33,71 @@ public class DiningTableService {
     }
 
     public DiningTableResponse create(DiningTableRequest request) {
+        String name = normalizeName(request.getTableName());
+        // Validate trùng tên — tên bàn phải duy nhất (case-insensitive)
+        diningTableRepository.findByTableNameIgnoreCase(name).ifPresent(t -> {
+            throw new RuntimeException("Tên bàn '" + name + "' đã tồn tại");
+        });
+
         DiningTable diningTable = new DiningTable();
-        diningTable.setTableName(request.getTableName());
+        diningTable.setTableName(name);
         diningTable.setSeatingCapacity(request.getSeatingCapacity());
-        diningTable.setTableStatus(request.getTableStatus());
+        // Bàn mới mặc định AVAILABLE — bỏ qua giá trị FE gửi để tránh tạo bàn đã ở
+        // trạng thái vận hành kỳ lạ.
+        diningTable.setTableStatus(
+                request.getTableStatus() != null ? request.getTableStatus() : "AVAILABLE"
+        );
         diningTable.setArea(request.getArea());
         diningTable.setFloor(getFloorByArea(request.getArea()));
         diningTable.setCreatedAt(Instant.now());
 
         return mapToResponse(diningTableRepository.save(diningTable));
     }
+
     public DiningTableResponse update(Integer id, DiningTableRequest request) {
         DiningTable diningTable = diningTableRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy bàn có id: " + id));
 
-        diningTable.setTableName(request.getTableName());
-        diningTable.setSeatingCapacity(request.getSeatingCapacity());
-        diningTable.setTableStatus(request.getTableStatus());
-        diningTable.setArea(request.getArea());
-        diningTable.setFloor(getFloorByArea(request.getArea()));
+        String currentStatus = diningTable.getTableStatus();
+        String newName = normalizeName(request.getTableName());
+
+        // Chặn đổi tên khi bàn đang có khách hoặc đã đặt — tránh kitchen/staff
+        // đang xem "A1" tự nhiên thấy đổi thành "A99" giữa chừng.
+        if (newName != null && !newName.equalsIgnoreCase(diningTable.getTableName())) {
+            if ("OCCUPIED".equals(currentStatus) || "RESERVED".equals(currentStatus)) {
+                throw new RuntimeException(
+                        "Không thể đổi tên bàn khi đang có khách hoặc đã đặt. " +
+                        "Vui lòng đợi bàn trống rồi sửa."
+                );
+            }
+            // Validate tên mới không trùng với bàn khác
+            diningTableRepository.findByTableNameIgnoreCase(newName).ifPresent(t -> {
+                if (!t.getId().equals(id)) {
+                    throw new RuntimeException("Tên bàn '" + newName + "' đã tồn tại");
+                }
+            });
+            diningTable.setTableName(newName);
+        }
+
+        if (request.getSeatingCapacity() != null) {
+            diningTable.setSeatingCapacity(request.getSeatingCapacity());
+        }
+        // CHỈ cập nhật status nếu request có truyền — null = giữ nguyên status thực tế.
+        // Cần thiết vì admin sửa info bàn (tên/khu/sức chứa) không gửi tableStatus,
+        // tránh ghi đè OCCUPIED/RESERVED/CLEANING về null hoặc AVAILABLE.
+        if (request.getTableStatus() != null && !request.getTableStatus().isBlank()) {
+            diningTable.setTableStatus(request.getTableStatus());
+        }
+        if (request.getArea() != null && !request.getArea().isBlank()) {
+            diningTable.setArea(request.getArea());
+            diningTable.setFloor(getFloorByArea(request.getArea()));
+        }
 
         return mapToResponse(diningTableRepository.save(diningTable));
+    }
+
+    private String normalizeName(String name) {
+        return name == null ? null : name.trim();
     }
 
     public String delete(Integer id) {

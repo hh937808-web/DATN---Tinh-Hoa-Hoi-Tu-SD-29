@@ -885,36 +885,38 @@ public class ReservationService {
             score += AREA_A_BONUS;
         }
         
-        // Consecutive ID bonus - reward tables with consecutive IDs (e.g., E1, E2, E3, E4, E5)
+        // Bonus + phạt khoảng cách dựa vào số trong tableName (VD E1,E2,E3).
+        // KHÔNG dùng ID vì ID không phản ánh vị trí vật lý của bàn.
         if (tables.size() > 1) {
-            List<Integer> ids = tables.stream()
-                    .map(DiningTable::getId)
+            List<Integer> nums = tables.stream()
+                    .map(ReservationService::extractTableNumber)
+                    .filter(java.util.Objects::nonNull)
                     .sorted()
                     .collect(Collectors.toList());
-            
-            boolean allConsecutive = true;
-            for (int i = 1; i < ids.size(); i++) {
-                if (ids.get(i) != ids.get(i-1) + 1) {
-                    allConsecutive = false;
-                    break;
+
+            if (nums.size() == tables.size()) {
+                boolean allConsecutive = true;
+                for (int i = 1; i < nums.size(); i++) {
+                    if (nums.get(i) != nums.get(i - 1) + 1) {
+                        allConsecutive = false;
+                        break;
+                    }
                 }
-            }
-            
-            if (allConsecutive) {
-                score += CONSECUTIVE_ID_BONUS * tables.size();
-                log.debug("Consecutive ID bonus applied: +{}", CONSECUTIVE_ID_BONUS * tables.size());
+                if (allConsecutive) {
+                    score += CONSECUTIVE_ID_BONUS * tables.size();
+                    log.debug("Consecutive name bonus applied: +{}", CONSECUTIVE_ID_BONUS * tables.size());
+                }
+
+                int min = nums.get(0);
+                int max = nums.get(nums.size() - 1);
+                score -= (max - min) * ID_DISTANCE_PENALTY;
             }
         }
-        
+
         // Single table bonus
         if (tables.size() == 1) {
             score += SINGLE_TABLE_BONUS;
         }
-        
-        // ID distance penalty (tables far apart)
-        int minId = tables.stream().mapToInt(DiningTable::getId).min().orElse(0);
-        int maxId = tables.stream().mapToInt(DiningTable::getId).max().orElse(0);
-        score -= (maxId - minId) * ID_DISTANCE_PENALTY;
         
         // Table count penalty (prefer fewer tables)
         score -= tables.size() * TABLE_COUNT_PENALTY;
@@ -1364,5 +1366,20 @@ public class ReservationService {
         // Return updated reservation response
         Customer customer = invoice.getCustomer();
         return buildReservationResponse(invoice, customer, toTableInfos(newTables));
+    }
+
+    // Lấy số ở cuối tableName để đo khoảng cách vật lý: "A1" → 1, "B12" → 12.
+    // Trả về null nếu tên không có số → bỏ qua bonus/phạt cho bàn đó.
+    private static final java.util.regex.Pattern TRAILING_DIGITS = java.util.regex.Pattern.compile("(\\d+)$");
+
+    private static Integer extractTableNumber(DiningTable t) {
+        if (t == null || t.getTableName() == null) return null;
+        java.util.regex.Matcher m = TRAILING_DIGITS.matcher(t.getTableName());
+        if (!m.find()) return null;
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

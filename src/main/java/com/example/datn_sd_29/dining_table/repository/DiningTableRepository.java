@@ -23,6 +23,9 @@ public interface DiningTableRepository extends JpaRepository<DiningTable, Intege
     // Đếm tổng bàn ngoại trừ 1 status (dùng để loại OUT_OF_SERVICE khỏi tổng bàn phục vụ)
     Long countByTableStatusNot(String excludedStatus);
 
+    // Check trùng tên bàn (case-insensitive). Trả về Optional vì tên là unique.
+    java.util.Optional<DiningTable> findByTableNameIgnoreCase(String tableName);
+
     List<DiningTable> findByTableNameContainingIgnoreCaseAndTableStatusNot(
             String tableName,
             String excludedStatus

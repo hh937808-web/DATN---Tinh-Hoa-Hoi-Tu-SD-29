@@ -496,30 +496,34 @@ public class WalkInService {
             score += SINGLE_TABLE_BONUS;
         }
         
-        // NEW: Consecutive ID bonus - reward tables with consecutive IDs
+        // Bonus + phạt khoảng cách dựa vào số trong tableName (VD "A1","A2","A3"
+        // được coi là sát nhau). KHÔNG dùng ID vì ID không phản ánh vị trí vật lý
+        // (admin xóa rồi thêm lại bàn → ID mới có thể chen vào giữa).
         if (tables.size() > 1) {
-            List<Integer> ids = tables.stream()
-                    .map(DiningTable::getId)
+            List<Integer> nums = tables.stream()
+                    .map(WalkInService::extractTableNumber)
+                    .filter(java.util.Objects::nonNull)
                     .sorted()
                     .collect(Collectors.toList());
-            
-            boolean allConsecutive = true;
-            for (int i = 1; i < ids.size(); i++) {
-                if (ids.get(i) != ids.get(i-1) + 1) {
-                    allConsecutive = false;
-                    break;
+
+            // Chỉ áp dụng khi parse được tên của tất cả bàn
+            if (nums.size() == tables.size()) {
+                boolean allConsecutive = true;
+                for (int i = 1; i < nums.size(); i++) {
+                    if (nums.get(i) != nums.get(i - 1) + 1) {
+                        allConsecutive = false;
+                        break;
+                    }
                 }
-            }
-            
-            if (allConsecutive) {
-                score += CONSECUTIVE_ID_BONUS * tables.size(); // More tables = more bonus
+                if (allConsecutive) {
+                    score += CONSECUTIVE_ID_BONUS * tables.size();
+                }
+
+                int min = nums.get(0);
+                int max = nums.get(nums.size() - 1);
+                score -= (max - min) * ID_DISTANCE_PENALTY;
             }
         }
-        
-        // ID distance penalty
-        int minId = tables.stream().mapToInt(DiningTable::getId).min().orElse(0);
-        int maxId = tables.stream().mapToInt(DiningTable::getId).max().orElse(0);
-        score -= (maxId - minId) * ID_DISTANCE_PENALTY;
         
         // Table count penalty
         score -= tables.size() * TABLE_COUNT_PENALTY;
@@ -658,5 +662,20 @@ public class WalkInService {
     
     private int capacitySafe(DiningTable table) {
         return table.getSeatingCapacity() == null ? 0 : table.getSeatingCapacity();
+    }
+
+    // Lấy phần số ở cuối tableName: "A1" → 1, "B12" → 12, "Bàn-3" → 3.
+    // Trả về null nếu tên rỗng hoặc không có số.
+    private static final java.util.regex.Pattern TRAILING_DIGITS = java.util.regex.Pattern.compile("(\\d+)$");
+
+    private static Integer extractTableNumber(DiningTable t) {
+        if (t == null || t.getTableName() == null) return null;
+        java.util.regex.Matcher m = TRAILING_DIGITS.matcher(t.getTableName());
+        if (!m.find()) return null;
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }
