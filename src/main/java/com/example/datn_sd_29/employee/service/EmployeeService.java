@@ -20,10 +20,11 @@ public class EmployeeService {
     private final PasswordEncoder passwordEncoder;
 
     // ====== GET ALL ======
+    // Hiển thị cả tài khoản đã bị khóa (isActive=false) — admin cần thấy để mở lại
+    // và để truy vết. Chỉ ẩn ADMIN role khỏi màn quản lý nhân viên.
     public List<Employee> getAll() {
         return employeeRepository.findAll().stream()
-                .filter(e -> Boolean.TRUE.equals(e.getIsActive())
-                        && !"ADMIN".equalsIgnoreCase(e.getRole()))
+                .filter(e -> !"ADMIN".equalsIgnoreCase(e.getRole()))
                 .toList();
     }
 
@@ -159,8 +160,7 @@ public class EmployeeService {
 
         return employeeRepository.searchEmployee(kw, rl, gd, from, to)
                 .stream()
-                .filter(e -> Boolean.TRUE.equals(e.getIsActive())
-                        && !"ADMIN".equalsIgnoreCase(e.getRole()))
+                .filter(e -> !"ADMIN".equalsIgnoreCase(e.getRole()))
                 .toList();
     }
 
@@ -182,8 +182,7 @@ public class EmployeeService {
         Sort sort = Sort.by(dir, sortBy);
 
         return employeeRepository.findAll(sort).stream()
-                .filter(e -> Boolean.TRUE.equals(e.getIsActive())
-                        && !"ADMIN".equalsIgnoreCase(e.getRole()))
+                .filter(e -> !"ADMIN".equalsIgnoreCase(e.getRole()))
                 .toList();
     }
 }
