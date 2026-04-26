@@ -13,68 +13,62 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * STOMP Subscription Interceptor for topic-level authorization
- * Enforces role-based access control for different WebSocket topics
- * User is already authenticated at handshake level
+ * STOMP Subscription Interceptor — phân quyền per-topic.
+ *
+ * Map roles cho từng topic dựa trên thực tế FE subscribe:
+ *   /topic/dashboard-stats   → ADMIN, RECEPTION (admin xem dashboard, lễ tân xem tổng quan)
+ *   /topic/invoice-updates   → ADMIN, RECEPTION, STAFF (vận hành đều cần biết hóa đơn thay đổi)
+ *   /topic/table-status      → ADMIN, RECEPTION, STAFF, KITCHEN (ai cũng cần biết bàn nào trống/đầy)
+ *   /topic/noshow            → ADMIN, RECEPTION, STAFF (đặt bàn no-show + tự hủy)
+ *   /topic/kitchen-updates   → ADMIN, RECEPTION, STAFF, KITCHEN (món order/done/cancel cần broadcast cho staff bưng)
+ *
+ * USER (customer) hiện chưa subscribe topic nào — nếu sau này có sẽ thêm.
  */
 @Slf4j
 @Component
 public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
 
-    // Admin-only topics
-    private static final Set<String> ADMIN_ONLY_TOPICS = Set.of(
-        "/topic/dashboard-stats",
-        "/topic/invoice-updates"
-    );
-    
-    // Topics accessible by ADMIN, RECEPTION, and STAFF
-    private static final Set<String> STAFF_ACCESSIBLE_TOPICS = Set.of(
-        "/topic/table-status",
-        "/topic/noshow",
-        "/topic/kitchen-updates"
+    private static final Map<String, Set<String>> TOPIC_ROLES = Map.of(
+            "/topic/dashboard-stats", Set.of("ADMIN", "RECEPTION"),
+            "/topic/invoice-updates", Set.of("ADMIN", "RECEPTION", "STAFF"),
+            "/topic/table-status",    Set.of("ADMIN", "RECEPTION", "STAFF", "KITCHEN"),
+            "/topic/noshow",          Set.of("ADMIN", "RECEPTION", "STAFF"),
+            "/topic/kitchen-updates", Set.of("ADMIN", "RECEPTION", "STAFF", "KITCHEN")
     );
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        
-        if (accessor != null && StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-            String destination = accessor.getDestination();
-            Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-            
-            if (destination == null || sessionAttributes == null) {
-                log.warn("WebSocket SUBSCRIBE rejected: Missing destination or session attributes");
-                throw new IllegalArgumentException("Invalid subscription request");
-            }
-            
-            String email = (String) sessionAttributes.get("email");
-            String role = (String) sessionAttributes.get("role");
-            
-            if (email == null || role == null) {
-                log.warn("WebSocket SUBSCRIBE rejected: User not authenticated");
-                throw new IllegalArgumentException("User not authenticated");
-            }
-            
-            // Check authorization for admin-only topics
-            if (ADMIN_ONLY_TOPICS.contains(destination)) {
-                if (!"ADMIN".equals(role)) {
-                    log.warn("WebSocket SUBSCRIBE rejected: User {} with role {} attempted to access admin-only topic {}", 
-                            email, role, destination);
-                    throw new IllegalArgumentException("Access denied: Admin role required");
-                }
-            }
-            // Check authorization for staff-accessible topics
-            else if (STAFF_ACCESSIBLE_TOPICS.contains(destination)) {
-                if (!"ADMIN".equals(role) && !"RECEPTION".equals(role) && !"STAFF".equals(role)) {
-                    log.warn("WebSocket SUBSCRIBE rejected: User {} with role {} attempted to access staff topic {}", 
-                            email, role, destination);
-                    throw new IllegalArgumentException("Access denied: Staff role required");
-                }
-            }
-            
-            log.info("WebSocket SUBSCRIBE authorized: user={}, role={}, topic={}", email, role, destination);
+
+        if (accessor == null || !StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            return message;
         }
-        
+
+        String destination = accessor.getDestination();
+        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+
+        if (destination == null || sessionAttributes == null) {
+            log.warn("WebSocket SUBSCRIBE rejected: missing destination or session attributes");
+            throw new IllegalArgumentException("Invalid subscription request");
+        }
+
+        String email = (String) sessionAttributes.get("email");
+        String role = (String) sessionAttributes.get("role");
+
+        if (email == null || role == null) {
+            log.warn("WebSocket SUBSCRIBE rejected: user not authenticated (no email/role in session)");
+            throw new IllegalArgumentException("User not authenticated");
+        }
+
+        Set<String> allowedRoles = TOPIC_ROLES.get(destination);
+        if (allowedRoles != null && !allowedRoles.contains(role)) {
+            log.warn("WebSocket SUBSCRIBE rejected: user={} role={} không có quyền với topic {}",
+                    email, role, destination);
+            throw new IllegalArgumentException("Access denied for topic " + destination);
+        }
+        // Topic không nằm trong map → cho phép (topic tự do, dành cho mở rộng tương lai)
+
+        log.info("WebSocket SUBSCRIBE authorized: user={}, role={}, topic={}", email, role, destination);
         return message;
     }
 }

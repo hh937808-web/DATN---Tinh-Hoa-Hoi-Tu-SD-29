@@ -25,7 +25,8 @@ public class KitchenController {
     private final KitchenService kitchenService;
 
     // ================= GET GROUP BY TABLE =================
-    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
+    // Staff cần xem trạng thái món để biết món nào sẵn sàng phục vụ
+    @PreAuthorize("hasAnyRole('KITCHEN', 'STAFF', 'RECEPTION', 'ADMIN')")
     @GetMapping("/tables")
     public ResponseEntity<ApiResponse<List<KitchenTableGroupResponse>>> getKitchenByTable(
             @RequestParam(required = false) List<InvoiceItemStatus> statuses
@@ -72,7 +73,8 @@ public class KitchenController {
     }
 
     // ================= SERVE =================
-    @PreAuthorize("hasAnyRole('KITCHEN', 'ADMIN')")
+    // Staff bưng món ra bàn (chuyển DONE → SERVED) — không phải bếp
+    @PreAuthorize("hasAnyRole('STAFF', 'RECEPTION', 'ADMIN')")
     @PutMapping("/items/{id}/serve")
     public ResponseEntity<ApiResponse<Void>> serveItem(
             @PathVariable @Min(1) Integer id

@@ -76,10 +76,12 @@ public class CustomerVoucherService {
             personalVoucher.setDiscountPercent(request.getDiscountPercent());
             personalVoucher.setVoucherType("Voucher khách hàng");
             personalVoucher.setMinOrderAmount(request.getMinOrderAmount());
-            
+            // is_active NOT NULL trong DB — phải set rõ, mặc định true khi mới tạo
+            personalVoucher.setIsActive(true);
+
             // FIX #19: Check if voucher code already exists (across all voucher types)
             voucherCodeValidator.validateUniqueVoucherCode(request.getVoucherCode());
-            
+
             personalVoucher = personalVoucherRepository.save(personalVoucher);
         }
 

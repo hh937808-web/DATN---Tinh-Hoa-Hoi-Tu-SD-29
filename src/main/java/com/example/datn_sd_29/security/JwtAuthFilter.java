@@ -40,30 +40,45 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        log.debug("Security ENABLED - Checking JWT for: {}", request.getRequestURI());
-        
         String path = request.getRequestURI();
-        
+        log.info("[JWT-FILTER] {} {}", request.getMethod(), path);
+
         // Bỏ qua authentication cho các endpoint công khai
         if (isPublicPath(path)) {
+            log.info("[JWT-FILTER] → public path, skip auth");
             filterChain.doFilter(request, response);
             return;
         }
 
         String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (authHeader == null) {
+            log.warn("[JWT-FILTER] → MISSING Authorization header (request will be anonymous)");
+            filterChain.doFilter(request, response);
+            return;
+        }
+        if (!authHeader.startsWith("Bearer ")) {
+            log.warn("[JWT-FILTER] → BAD Authorization format (expected 'Bearer xxx', got '{}')",
+                    authHeader.length() > 30 ? authHeader.substring(0, 30) + "..." : authHeader);
             filterChain.doFilter(request, response);
             return;
         }
 
         String token = authHeader.substring(7);
         if (!jwtService.isTokenValid(token)) {
+            log.warn("[JWT-FILTER] → INVALID token (signature mismatch hoặc expired). Token len={}", token.length());
             filterChain.doFilter(request, response);
             return;
         }
 
         String email = jwtService.extractSubject(token);
         String role = jwtService.extractRole(token);  // Extract role from JWT
+
+        if (role == null || role.isBlank()) {
+            log.warn("[JWT-FILTER] → token VALID nhưng KHÔNG có role claim (subject={}). " +
+                    "Có thể token cũ trước khi thêm role claim. User cần logout/login lại.", email);
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         // Create authority from role for Spring Security
         List<org.springframework.security.core.GrantedAuthority> authorities = List.of(
@@ -76,6 +91,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
+        log.info("[JWT-FILTER] → AUTH OK: subject={}, role=ROLE_{}", email, role);
         filterChain.doFilter(request, response);
     }
     

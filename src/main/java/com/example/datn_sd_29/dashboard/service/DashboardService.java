@@ -336,9 +336,11 @@ public class DashboardService {
                 // Check if table has an active invoice
                 Invoice invoice = tableToInvoiceMap.get(table.getId());
                 if (invoice != null) {
-                    // Get customer name if available
+                    // Walk-in: tên lưu ở guestName (không có Customer entity)
                     if (invoice.getCustomer() != null) {
                         customerName = invoice.getCustomer().getFullName();
+                    } else if (invoice.getGuestName() != null && !invoice.getGuestName().isBlank()) {
+                        customerName = invoice.getGuestName();
                     }
                     
                     // Get serving staff name if available (not cashier/employee)
@@ -491,6 +493,10 @@ public class DashboardService {
             if (invoice.getCustomer() != null) {
                 response.setCustomerName(invoice.getCustomer().getFullName());
                 response.setCustomerPhone(invoice.getCustomer().getPhoneNumber());
+            } else if (invoice.getGuestName() != null && !invoice.getGuestName().isBlank()) {
+                // Walk-in: tên lưu ở guestName
+                response.setCustomerName(invoice.getGuestName());
+                response.setCustomerPhone(invoice.getGuestPhone());
             }
             
             // Get serving staff name (not cashier/employee)

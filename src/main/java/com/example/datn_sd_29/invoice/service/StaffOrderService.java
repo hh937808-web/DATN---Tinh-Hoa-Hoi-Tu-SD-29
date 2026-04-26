@@ -125,33 +125,21 @@ public class StaffOrderService {
      */
     private void assignAndCheckEmployee(Invoice invoice) {
         Employee currentEmployee = getCurrentEmployee();
-        
-        // If no authentication (no employee logged in), allow operation
+
+        // No auth → cho qua (dev mode)
         if (currentEmployee == null) {
             return;
         }
-        
-        // If invoice has no employee assigned, assign current employee
+
+        // invoice.employee = "cashier / nhân viên xử lý hóa đơn" — chỉ set 1 lần khi
+        // chưa có ai assign. KHÔNG enforce 1-employee-per-invoice vì:
+        //   - Lễ tân check-in walk-in → invoice.employee = lễ tân
+        //   - Staff order món → currentEmployee = staff (KHÁC lễ tân) → là pattern đúng
+        //   - Ownership của "ai đang phục vụ bàn" được track bởi invoice.servingStaff
+        //     (validateAndClaimTable) — không phải invoice.employee.
         if (invoice.getEmployee() == null) {
             invoice.setEmployee(currentEmployee);
             invoiceRepository.save(invoice);
-            return;
-        }
-        
-        // If invoice already has an employee assigned
-        if (!invoice.getEmployee().getId().equals(currentEmployee.getId())) {
-            // If security is DISABLED, allow operation (don't block)
-            if (!securityEnabled) {
-                return;
-            }
-            
-            // If security is ENABLED, block the operation
-            String assignedStaffName = invoice.getEmployee().getFullName();
-            throw new ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Bàn này đang được phục vụ bởi nhân viên " + assignedStaffName + ". " +
-                "Chỉ nhân viên đã order mới có thể tiếp tục order cho bàn này."
-            );
         }
     }
     
@@ -254,9 +242,15 @@ public class StaffOrderService {
                         .build())
                 .collect(Collectors.toList());
         
-        String customerName = invoice.getCustomer() != null 
-                ? invoice.getCustomer().getFullName() 
-                : "Khách vãng lai";
+        // Ưu tiên Customer (KH có tài khoản) → guestName (walk-in nhập tay) → fallback
+        String customerName;
+        if (invoice.getCustomer() != null) {
+            customerName = invoice.getCustomer().getFullName();
+        } else if (invoice.getGuestName() != null && !invoice.getGuestName().isBlank()) {
+            customerName = invoice.getGuestName();
+        } else {
+            customerName = "Khách vãng lai";
+        }
         
         return InvoiceGroupResponse.builder()
                 .invoiceId(invoice.getId())

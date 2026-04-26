@@ -50,10 +50,14 @@ public class KitchenService {
             if (!map.containsKey(tableId)) {
                 // Lấy thông tin từ invoice
                 var invoice = item.getInvoice();
+                // Ưu tiên Customer (KH có tài khoản) → guestName (walk-in nhập tay) → fallback
                 String customerName = "Khách vãng lai";
-                if (invoice != null && invoice.getCustomer() != null) {
-                    var customer = invoice.getCustomer();
-                    customerName = customer.getFullName() != null ? customer.getFullName() : "Khách vãng lai";
+                if (invoice != null) {
+                    if (invoice.getCustomer() != null && invoice.getCustomer().getFullName() != null) {
+                        customerName = invoice.getCustomer().getFullName();
+                    } else if (invoice.getGuestName() != null && !invoice.getGuestName().isBlank()) {
+                        customerName = invoice.getGuestName();
+                    }
                 }
                 
                 Integer guestCount = invoice != null && invoice.getGuestCount() != null 

@@ -31,66 +31,19 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) {
-        
-        log.info("WebSocket handshake initiated (security.api.enabled={})", securityEnabled);
-        
-        // If security is disabled, allow all WebSocket connections without authentication
-        // This is for development mode where all APIs are public
-        if (!securityEnabled) {
-            log.info("WebSocket handshake accepted: Security disabled (dev mode) - allowing all connections");
-            // Set generic dev user attributes with ADMIN role to access all topics
-            attributes.put("email", "dev-user");
-            attributes.put("role", "ADMIN");
-            return true;
-        }
-        
-        // Security enabled - validate JWT token
-        if (request instanceof ServletServerHttpRequest) {
-            ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
-            String token = servletRequest.getServletRequest().getParameter("token");
-            
-            if (token == null || token.isEmpty()) {
-                log.warn("WebSocket handshake rejected: No token provided");
-                return false; // Reject handshake
-            }
-            
-            // Validate token
-            try {
-                if (!jwtService.isTokenValid(token)) {
-                    log.warn("WebSocket handshake rejected: Invalid token");
-                    return false;
-                }
-                
-                // Extract user information
-                String email = jwtService.extractSubject(token);
-                String role = jwtService.extractRole(token);
-                
-                if (email == null || role == null) {
-                    log.warn("WebSocket handshake rejected: Invalid token claims");
-                    return false;
-                }
-                
-                // Verify role - allow STAFF, RECEPTION, and ADMIN
-                if (!"STAFF".equals(role) && !"RECEPTION".equals(role) && !"ADMIN".equals(role)) {
-                    log.warn("WebSocket handshake rejected: User {} with role {} not authorized", email, role);
-                    return false;
-                }
-                
-                // Store user info in session attributes for later use
-                attributes.put("email", email);
-                attributes.put("role", role);
-                
-                log.info("WebSocket handshake accepted: user={}, role={}", email, role);
-                return true; // Accept handshake
-                
-            } catch (Exception e) {
-                log.error("WebSocket handshake error: {}", e.getMessage());
-                return false;
-            }
-        }
-        
-        log.warn("WebSocket handshake rejected: Invalid request type");
-        return false;
+
+        // QUAN TRỌNG: SockJS dùng nhiều transport (xhr_streaming, xhr, eventsource...),
+        // mỗi transport tạo URL phụ KHÔNG kế thừa query string từ URL gốc.
+        // Vì vậy KHÔNG thể auth qua ?token=xxx ở handshake — sẽ fail mọi transport sau cái đầu tiên.
+        //
+        // Giải pháp: cho phép handshake luôn, auth thật được thực hiện ở
+        // WebSocketChannelInterceptor.preSend() khi nhận STOMP CONNECT frame
+        // (token gửi qua header `Authorization: Bearer xxx` trong connectHeaders).
+        //
+        // Sub-paths /ws/** đã được khai báo permitAll trong SecurityConfig,
+        // nên việc cho qua handshake không tạo lỗ hổng — auth thật vẫn diễn ra ở STOMP layer.
+        log.debug("WebSocket handshake accepted (auth deferred to STOMP CONNECT)");
+        return true;
     }
 
     @Override
